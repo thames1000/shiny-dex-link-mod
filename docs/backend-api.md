@@ -2,6 +2,12 @@
 
 All requests include `serverToken` from `config/shinydex-link.json`. The mod never sends events for unlinked players unless `syncUnlinkedPlayers` is enabled.
 
+> **Reference implementation:** the Shiny Dex website ships these endpoints as
+> Vercel serverless functions backed by Cloud Firestore — see
+> `../cobblemon-shiny-dex/api/minecraft/` and `SETUP-MOD-SYNC.md` in that repo.
+> Point `apiBaseUrl` at `https://<project>.vercel.app/api` (the `/api` prefix is
+> where Vercel serves the functions). Link codes are matched case-insensitively.
+
 ## POST `/minecraft/link/verify`
 
 Request:
