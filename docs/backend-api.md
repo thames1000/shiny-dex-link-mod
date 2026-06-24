@@ -92,6 +92,39 @@ Response:
 
 The backend should treat `eventId` as idempotent and ignore duplicates.
 
+## POST `/minecraft/berries`
+
+Reports the berries a linked player holds (from `/shinydex berries`). Berries are
+a set-only collection, so the call is idempotent.
+
+Request:
+
+```json
+{
+  "serverToken": "secret",
+  "serverId": "cobbleverse-main",
+  "minecraftUuid": "uuid",
+  "minecraftName": "Thamescape",
+  "berries": ["occa", "lum", "sitrus"]
+}
+```
+
+`berries` ids may be bare (`occa`) or full item ids (`cobblemon:occa_berry`); the
+backend normalizes and ignores anything not in its berry list.
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "OK",
+  "added": 2,
+  "total": 3,
+  "received": 3,
+  "ignored": 0
+}
+```
+
 ## POST `/minecraft/test-event`
 
 Same payload shape as `/minecraft/catches`, but used only for manual connectivity tests.

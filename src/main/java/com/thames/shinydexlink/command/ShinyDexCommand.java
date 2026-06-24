@@ -7,18 +7,22 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.thames.shinydexlink.api.ShinyDexApiClient;
+import com.thames.shinydexlink.api.dto.BerryReportRequest;
 import com.thames.shinydexlink.api.dto.LinkRequest;
 import com.thames.shinydexlink.api.dto.UnlinkRequest;
 import com.thames.shinydexlink.config.ShinyDexConfig;
 import com.thames.shinydexlink.data.EventQueue;
 import com.thames.shinydexlink.data.LinkedPlayer;
 import com.thames.shinydexlink.data.LinkedPlayerStore;
+import com.thames.shinydexlink.sync.BerryScanner;
 import com.thames.shinydexlink.sync.CatchEventFactory;
 import com.thames.shinydexlink.util.CooldownManager;
 import com.thames.shinydexlink.util.TimeUtil;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
@@ -55,6 +59,7 @@ public final class ShinyDexCommand {
                 .then(literal("unlink").executes(context -> unlink(context.getSource())))
                 .then(literal("status").executes(context -> status(context.getSource())))
                 .then(literal("sync").executes(context -> sync(context.getSource())))
+                .then(literal("berries").executes(context -> berries(context.getSource())))
                 .then(literal("test").executes(context -> test(context.getSource()))));
     }
 
@@ -148,6 +153,49 @@ public final class ShinyDexCommand {
     private int sync(CommandSourceStack source) throws CommandSyntaxException {
         source.getPlayerOrException();
         source.sendSuccess(() -> Component.literal("Full ShinyDex Pokédex sync is planned. Catch sync is available after linking."), false);
+        return 1;
+    }
+
+    private int berries(CommandSourceStack source) throws CommandSyntaxException {
+        if (!config.enabled) {
+            source.sendFailure(Component.literal("ShinyDex Link is disabled on this server."));
+            return 0;
+        }
+
+        ServerPlayer player = source.getPlayerOrException();
+        UUID uuid = player.getUUID();
+        if (!linkedPlayerStore.isLinked(uuid) && !config.syncUnlinkedPlayers) {
+            source.sendFailure(Component.literal("You are not linked yet. Use /shinydex link <code> from the Shiny Dex website."));
+            return 0;
+        }
+
+        OptionalLong remaining = cooldowns.remainingSeconds(uuid, "berries", config.testCooldownSeconds);
+        if (remaining.isPresent()) {
+            source.sendFailure(Component.literal("Please wait " + remaining.getAsLong() + "s before scanning your berries again."));
+            return 0;
+        }
+
+        Set<String> berries = BerryScanner.scan(player, logger);
+        if (berries.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No Cobblemon berries found in your inventory, ender chest, or containers."), false);
+            return 1;
+        }
+
+        int count = berries.size();
+        source.sendSuccess(() -> Component.literal("Scanning " + count + " berry type(s) to ShinyDex..."), false);
+        BerryReportRequest request = new BerryReportRequest(
+                config.serverId, uuid.toString(), player.getGameProfile().getName(), new ArrayList<>(berries));
+        apiClient.sendBerries(request).whenComplete((response, throwable) -> runForPlayer(player, () -> {
+            if (throwable != null || response == null || !response.success) {
+                String error = throwable != null
+                        ? throwable.getMessage()
+                        : response == null ? "Empty ShinyDex response" : response.message;
+                player.sendSystemMessage(Component.literal("ShinyDex berry sync failed: " + compact(error)));
+                return;
+            }
+            player.sendSystemMessage(Component.literal(
+                    "ShinyDex berries synced: " + response.added + " new, " + response.total + " total."));
+        }));
         return 1;
     }
 

@@ -88,6 +88,7 @@ Use `apiBaseUrl: "mock"` while developing. The mod logs redacted JSON payloads i
 - `/shinydex unlink` marks the local link disconnected and notifies the backend if reachable.
 - `/shinydex status` shows linked state, last sync time, and queued events.
 - `/shinydex sync` is a stub for future full Pokédex sync.
+- `/shinydex berries` scans your inventory, ender chest, and containers for Cobblemon berries and syncs the set to the website. Vanilla container items (shulker boxes) are scanned too; **Sophisticated Backpacks** contents are read best-effort when that mod is installed (see `BerryScanner` / `SophisticatedBackpacksReader`).
 - `/shinydex test` sends a fake shiny Mareep test event for API connectivity.
 
 ## Apex/Fabric Setup

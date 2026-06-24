@@ -3,6 +3,8 @@ package com.thames.shinydexlink.api;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.thames.shinydexlink.api.dto.ApiResponse;
+import com.thames.shinydexlink.api.dto.BerryReportRequest;
+import com.thames.shinydexlink.api.dto.BerryResponse;
 import com.thames.shinydexlink.api.dto.CatchEventRequest;
 import com.thames.shinydexlink.api.dto.LinkRequest;
 import com.thames.shinydexlink.api.dto.LinkResponse;
@@ -51,6 +53,12 @@ public final class ShinyDexApiClient {
     public CompletableFuture<ApiResponse> sendTestEvent(CatchEventRequest request) {
         JsonObject payload = catchPayload(request);
         return post(ApiEndpoints.TEST_EVENT, payload, ApiResponse.class, ApiResponse.success());
+    }
+
+    public CompletableFuture<BerryResponse> sendBerries(BerryReportRequest request) {
+        JsonObject payload = JsonUtil.toObject(request);
+        payload.addProperty("serverToken", config.serverToken);
+        return post(ApiEndpoints.BERRIES, payload, BerryResponse.class, BerryResponse.success());
     }
 
     public String serializeCatchPayloadForTest(CatchEventRequest request) {
@@ -137,6 +145,9 @@ public final class ShinyDexApiClient {
         if (response instanceof LinkResponse linkResponse) {
             return !linkResponse.success;
         }
+        if (response instanceof BerryResponse berryResponse) {
+            return !berryResponse.success;
+        }
         return false;
     }
 
@@ -146,6 +157,9 @@ public final class ShinyDexApiClient {
         }
         if (response instanceof LinkResponse linkResponse) {
             return linkResponse.message;
+        }
+        if (response instanceof BerryResponse berryResponse) {
+            return berryResponse.message;
         }
         return null;
     }
