@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "shinydex-link",
+  "version": "${version}",
+  "name": "ShinyDex Link",
+  "description": "Server-side Shiny Dex companion integration for Cobblemon catches.",
+  "authors": [
+    "Thamescape"
+  ],
+  "contact": {
+    "homepage": "https://cobblemon-shiny-dex.vercel.app"
+  },
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "com.thames.shinydexlink.ShinyDexLinkMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "cobblemon": "1.7.3"
+  }
+}

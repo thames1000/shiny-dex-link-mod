@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "serverId": "cobbleverse-main",
+  "apiBaseUrl": "mock",
+  "serverToken": "change-me",
+  "syncUnlinkedPlayers": false,
+  "retryFailedEvents": true,
+  "retryIntervalSeconds": 60,
+  "logSuccessfulSyncs": true,
+  "announceShinySyncToPlayer": true,
+  "requestTimeoutSeconds": 10,
+  "linkCooldownSeconds": 15,
+  "testCooldownSeconds": 30
+}
