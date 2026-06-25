@@ -42,6 +42,7 @@ receives. An entry with a `species` and no flags is treated as a catch;
 ```json
 [
   { "species": "mareep", "displayName": "Mareep", "shiny": true,  "eventType": "pokemon_caught" },
+  { "species": "meowth", "displayName": "Meowth", "shiny": false, "aspects": ["alolan"], "eventType": "pokemon_caught" },
   { "species": "zubat",  "displayName": "Zubat",  "shiny": false, "eventType": "pokemon_caught" }
 ]
 ```
@@ -54,6 +55,9 @@ their queue file to apply any catches that hadn't synced.
 ## Notes
 
 - Unknown species names / dex numbers are counted and reported, not fatal.
-- Forms/regional variants aren't mapped onto the website's separate Variants tab
-  yet — only the national dex (caught/shiny) is updated. The `form` field is
-  ignored for now.
+- Forms/regional variants map onto the website's separate **Variants** tab via the
+  `aspects` field (Cobblemon aspect tags such as `["alolan"]` or
+  `["region-bias-alola"]`); the website resolves them by national dex + aspect/form
+  name. An entry with no matching variant still updates the national dex as before.
+  Variants only have caught/shiny states (no seen, no boxed). The `form` field is
+  used as a fallback when `aspects` is absent.

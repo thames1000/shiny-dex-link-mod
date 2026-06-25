@@ -59,6 +59,8 @@ The capture hook was verified from the Cobblemon `1.7.3` source:
 
 `CobblemonCaptureListener` uses reflection so this project stays buildable without bundling Cobblemon as a compile-time dependency. If Cobblemon is missing or the API shape changes, linking and test commands still work and capture sync logs a clear warning.
 
+Each capture also forwards the Pokémon's Cobblemon **aspects** (e.g. `alolan`, `region-bias-alola`) in the catch payload. The website matches these against its **Variants** tab so regional/cosmetic forms are tracked in addition to the national dex — see `docs/backend-api.md` and `docs/site-export.md`.
+
 ## Config
 
 Generated at `config/shinydex-link.json`:

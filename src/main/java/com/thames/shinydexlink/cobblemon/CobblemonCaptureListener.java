@@ -9,6 +9,9 @@ import com.thames.shinydexlink.util.TimeUtil;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -98,6 +101,7 @@ public final class CobblemonCaptureListener {
             request.displayName = displayName(pokemon);
             request.shiny = booleanProperty(pokemon, "shiny", false);
             request.form = normalize(formName(pokemon));
+            request.aspects = aspects(pokemon);
             request.gender = normalize(enumName(propertyOrNull(pokemon, "gender")));
             request.level = intProperty(pokemon, "level");
             request.ball = normalize(ballName(pokeBallEntity, pokemon));
@@ -138,6 +142,34 @@ public final class CobblemonCaptureListener {
         Object form = propertyOrNull(pokemon, "form");
         Object formName = propertyOrNull(form, "name");
         return formName == null ? "normal" : formName.toString();
+    }
+
+    /**
+     * Cobblemon {@code Pokemon.getAspects()} returns the aspect tags that identify
+     * a form/variant (e.g. {@code alolan}, {@code region-bias-alola}). The website
+     * keys its Variants tab on these, so we forward them as a normalized list and
+     * let the backend resolve the variant id. Returns null when there's nothing a
+     * variant could match on, so plain mons don't add noise to payloads/queue files.
+     */
+    private List<String> aspects(Object pokemon) {
+        Object value = propertyOrNull(pokemon, "aspects");
+        if (!(value instanceof Collection<?> collection) || collection.isEmpty()) {
+            return null;
+        }
+
+        List<String> result = new ArrayList<>();
+        for (Object aspect : collection) {
+            if (aspect == null) {
+                continue;
+            }
+            // "shiny" is already carried by the dedicated shiny flag; skip it so the
+            // backend's aspect→variant lookup only sees form-identifying tags.
+            String normalized = aspect.toString().toLowerCase(Locale.ROOT).trim();
+            if (!normalized.isEmpty() && !normalized.equals("shiny") && !result.contains(normalized)) {
+                result.add(normalized);
+            }
+        }
+        return result.isEmpty() ? null : result;
     }
 
     private String ballName(Object pokeBallEntity, Object pokemon) {

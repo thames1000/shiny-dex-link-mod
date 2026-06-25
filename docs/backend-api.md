@@ -69,12 +69,20 @@ Request:
   "displayName": "Mareep",
   "shiny": true,
   "form": "normal",
+  "aspects": ["alolan"],
   "gender": "female",
   "level": 18,
   "ball": "quick_ball",
   "caughtAt": "2026-06-24T20:15:31Z"
 }
 ```
+
+`aspects` is the Cobblemon aspect list for the captured Pokémon (e.g.
+`["alolan"]`, `["region-bias-alola"]`). It is omitted for a plain form. The
+backend matches `aspects` (falling back to `form`) against the website's Variants
+catalog — national dex number + aspect/form name — to update the player's
+**Variants** tab in addition to the national dex. The `shiny` aspect is stripped
+by the mod since the dedicated `shiny` flag already carries it.
 
 Response:
 
@@ -85,12 +93,17 @@ Response:
   "updated": {
     "normalCaught": true,
     "shinyCaught": true,
-    "newDexEntry": true
+    "newDexEntry": true,
+    "variantId": "Mareep-alolan",
+    "variantCaught": true,
+    "variantShinyCaught": true
   }
 }
 ```
 
-The backend should treat `eventId` as idempotent and ignore duplicates.
+`variantId` is null and the `variant*` flags false when no variant matched.
+Variants only have caught/shiny states (no seen, no boxed). The backend should
+treat `eventId` as idempotent and ignore duplicates.
 
 ## POST `/minecraft/berries`
 
