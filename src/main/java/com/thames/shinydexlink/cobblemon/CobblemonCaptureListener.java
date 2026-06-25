@@ -3,20 +3,16 @@ package com.thames.shinydexlink.cobblemon;
 import com.thames.shinydexlink.api.dto.CatchEventRequest;
 import com.thames.shinydexlink.config.ShinyDexConfig;
 import com.thames.shinydexlink.data.LinkedPlayerStore;
+import com.thames.shinydexlink.hunt.HuntManager;
+import com.thames.shinydexlink.hunt.HuntState;
+import com.thames.shinydexlink.net.HuntNetworking;
 import com.thames.shinydexlink.sync.CatchEventFactory;
 import com.thames.shinydexlink.sync.SyncService;
 import com.thames.shinydexlink.util.TimeUtil;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.function.Consumer;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 
@@ -27,6 +23,7 @@ public final class CobblemonCaptureListener {
 
     private final ShinyDexConfig config;
     private final LinkedPlayerStore linkedPlayerStore;
+    private final HuntManager huntManager;
     private final SyncService syncService;
     private final Logger logger;
     private Object subscription;
@@ -34,11 +31,13 @@ public final class CobblemonCaptureListener {
     public CobblemonCaptureListener(
             ShinyDexConfig config,
             LinkedPlayerStore linkedPlayerStore,
+            HuntManager huntManager,
             SyncService syncService,
             Logger logger
     ) {
         this.config = config;
         this.linkedPlayerStore = linkedPlayerStore;
+        this.huntManager = huntManager;
         this.syncService = syncService;
         this.logger = logger;
     }
@@ -50,9 +49,9 @@ public final class CobblemonCaptureListener {
          * - com.cobblemon.mod.common.api.events.pokemon.PokemonCapturedEvent
          * - event payload properties: pokemon, player, pokeBallEntity
          *
-         * Reflection keeps this server-side mod buildable without bundling or pinning a
-         * Cobblemon compile-time artifact. If Cobblemon changes this API, the rest of
-         * ShinyDex Link still loads and the log points at the version-specific adapter.
+         * Reflection keeps this mod buildable without bundling or pinning a Cobblemon
+         * compile-time artifact. If Cobblemon changes this API, the rest of ShinyDex Link
+         * still loads and the log points at the version-specific adapter.
          */
         try {
             Class.forName(CAPTURE_EVENT_CLASS);
@@ -78,9 +77,9 @@ public final class CobblemonCaptureListener {
         }
 
         try {
-            ServerPlayer player = (ServerPlayer) property(event, "player");
-            Object pokemon = property(event, "pokemon");
-            Object pokeBallEntity = property(event, "pokeBallEntity");
+            ServerPlayer player = (ServerPlayer) CobblemonReflect.property(event, "player");
+            Object pokemon = CobblemonReflect.property(event, "pokemon");
+            Object pokeBallEntity = CobblemonReflect.propertyOrNull(event, "pokeBallEntity");
             if (player == null || pokemon == null) {
                 return;
             }
@@ -91,21 +90,23 @@ public final class CobblemonCaptureListener {
             }
 
             Instant caughtAt = Instant.now();
-            String species = speciesId(pokemon);
+            String species = CobblemonReflect.speciesId(pokemon);
             CatchEventRequest request = new CatchEventRequest();
             request.eventId = CatchEventFactory.eventId(config.serverId, uuid, species, caughtAt);
             request.serverId = config.serverId;
             request.minecraftUuid = uuid.toString();
             request.minecraftName = player.getGameProfile().getName();
             request.species = species;
-            request.displayName = displayName(pokemon);
-            request.shiny = booleanProperty(pokemon, "shiny", false);
-            request.form = normalize(formName(pokemon));
-            request.aspects = aspects(pokemon);
-            request.gender = normalize(enumName(propertyOrNull(pokemon, "gender")));
-            request.level = intProperty(pokemon, "level");
-            request.ball = normalize(ballName(pokeBallEntity, pokemon));
+            request.displayName = CobblemonReflect.displayName(pokemon);
+            request.shiny = CobblemonReflect.booleanProperty(pokemon, "shiny", false);
+            request.form = CobblemonReflect.normalize(CobblemonReflect.formName(pokemon));
+            request.aspects = CobblemonReflect.aspects(pokemon);
+            request.gender = CobblemonReflect.normalize(CobblemonReflect.enumName(CobblemonReflect.propertyOrNull(pokemon, "gender")));
+            request.level = CobblemonReflect.intProperty(pokemon, "level");
+            request.ball = CobblemonReflect.normalize(CobblemonReflect.ballName(pokeBallEntity, pokemon));
             request.caughtAt = TimeUtil.format(caughtAt);
+
+            applyHuntCompletion(player, uuid, request);
 
             syncService.submitCatch(request, player);
         } catch (RuntimeException exception) {
@@ -113,152 +114,23 @@ public final class CobblemonCaptureListener {
         }
     }
 
-    private String speciesId(Object pokemon) {
-        Object species = propertyOrNull(pokemon, "species");
-        Object showdownId = invokeOrNull(species, "showdownId");
-        if (showdownId != null) {
-            return showdownId.toString();
-        }
-
-        Object identifier = propertyOrNull(species, "resourceIdentifier");
-        if (identifier instanceof ResourceLocation resourceLocation) {
-            return resourceLocation.getPath();
-        }
-        return "unknown";
-    }
-
-    private String displayName(Object pokemon) {
-        Object component = invokeOrNull(pokemon, "getDisplayName", new Class<?>[]{boolean.class}, false);
-        if (component instanceof Component minecraftComponent) {
-            return minecraftComponent.getString();
-        }
-
-        Object species = propertyOrNull(pokemon, "species");
-        Object name = propertyOrNull(species, "name");
-        return name == null ? "Unknown" : name.toString();
-    }
-
-    private String formName(Object pokemon) {
-        Object form = propertyOrNull(pokemon, "form");
-        Object formName = propertyOrNull(form, "name");
-        return formName == null ? "normal" : formName.toString();
-    }
-
     /**
-     * Cobblemon {@code Pokemon.getAspects()} returns the aspect tags that identify
-     * a form/variant (e.g. {@code alolan}, {@code region-bias-alola}). The website
-     * keys its Variants tab on these, so we forward them as a normalized list and
-     * let the backend resolve the variant id. Returns null when there's nothing a
-     * variant could match on, so plain mons don't add noise to payloads/queue files.
+     * If this catch completes the player's active hunt, stamp the catch with the hunt tally,
+     * clear the hunt, and hide the overlay. Encounter-based hunts finish on the catch itself;
+     * egg hunts finish in {@link CobblemonHuntListener} since hatching never fires a capture.
      */
-    private List<String> aspects(Object pokemon) {
-        Object value = propertyOrNull(pokemon, "aspects");
-        if (!(value instanceof Collection<?> collection) || collection.isEmpty()) {
-            return null;
+    private void applyHuntCompletion(ServerPlayer player, UUID uuid, CatchEventRequest request) {
+        if (!config.enableHuntCounter) {
+            return;
         }
-
-        List<String> result = new ArrayList<>();
-        for (Object aspect : collection) {
-            if (aspect == null) {
-                continue;
-            }
-            // "shiny" is already carried by the dedicated shiny flag; skip it so the
-            // backend's aspect→variant lookup only sees form-identifying tags.
-            String normalized = aspect.toString().toLowerCase(Locale.ROOT).trim();
-            if (!normalized.isEmpty() && !normalized.equals("shiny") && !result.contains(normalized)) {
-                result.add(normalized);
-            }
+        HuntState state = huntManager.get(uuid).orElse(null);
+        if (state == null || !state.matches(request.species, request.form)) {
+            return;
         }
-        return result.isEmpty() ? null : result;
-    }
-
-    private String ballName(Object pokeBallEntity, Object pokemon) {
-        Object ball = propertyOrNull(pokeBallEntity, "pokeBall");
-        if (ball == null) {
-            ball = propertyOrNull(pokemon, "caughtBall");
-        }
-
-        Object name = propertyOrNull(ball, "name");
-        if (name instanceof ResourceLocation resourceLocation) {
-            return resourceLocation.getPath();
-        }
-        return name == null ? null : name.toString();
-    }
-
-    private boolean booleanProperty(Object target, String name, boolean fallback) {
-        Object value = propertyOrNull(target, name);
-        return value instanceof Boolean booleanValue ? booleanValue : fallback;
-    }
-
-    private Integer intProperty(Object target, String name) {
-        Object value = propertyOrNull(target, name);
-        return value instanceof Number number ? number.intValue() : null;
-    }
-
-    private String enumName(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Enum<?> enumValue) {
-            return enumValue.name();
-        }
-        return value.toString();
-    }
-
-    private String normalize(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        String normalized = value.toLowerCase(Locale.ROOT).replace(' ', '_');
-        int namespace = normalized.indexOf(':');
-        return namespace >= 0 ? normalized.substring(namespace + 1) : normalized;
-    }
-
-    private Object property(Object target, String name) {
-        Object value = propertyOrNull(target, name);
-        if (value == null) {
-            throw new IllegalStateException("Missing Cobblemon property " + name + " on " + target.getClass().getName());
-        }
-        return value;
-    }
-
-    private Object propertyOrNull(Object target, String name) {
-        if (target == null) {
-            return null;
-        }
-
-        String capitalized = Character.toUpperCase(name.charAt(0)) + name.substring(1);
-        Object getter = invokeOrNull(target, "get" + capitalized);
-        if (getter != null) {
-            return getter;
-        }
-        Object booleanGetter = invokeOrNull(target, "is" + capitalized);
-        if (booleanGetter != null) {
-            return booleanGetter;
-        }
-
-        try {
-            Field field = target.getClass().getDeclaredField(name);
-            field.setAccessible(true);
-            return field.get(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-    }
-
-    private Object invokeOrNull(Object target, String name) {
-        return invokeOrNull(target, name, new Class<?>[0]);
-    }
-
-    private Object invokeOrNull(Object target, String name, Class<?>[] parameterTypes, Object... arguments) {
-        if (target == null) {
-            return null;
-        }
-        try {
-            Method method = target.getClass().getMethod(name, parameterTypes);
-            return method.invoke(target, arguments);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+        request.huntCount = state.total();
+        request.huntKind = state.kind();
+        request.huntStartedAt = state.startedAt == null ? null : TimeUtil.format(state.startedAt);
+        huntManager.stop(uuid);
+        HuntNetworking.sendUpdate(player, null);
     }
 }

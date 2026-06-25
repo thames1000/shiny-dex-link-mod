@@ -24,4 +24,14 @@ public final class CatchEventRequest {
     public Integer level;
     public String ball;
     public String caughtAt;
+    /**
+     * Shiny-hunt fields, populated only when this catch/hatch completed an active hunt for
+     * the player. {@code huntCount} is the total attempts it took (encounters + egg hatches
+     * + manual bumps), {@code huntKind} is {@code "encounters"}, {@code "eggs"}, or
+     * {@code "mixed"}, and {@code huntStartedAt} is when the hunt began. All null for a
+     * catch that wasn't being hunted, so ordinary catches stay clean in logs/queue files.
+     */
+    public Integer huntCount;
+    public String huntKind;
+    public String huntStartedAt;
 }

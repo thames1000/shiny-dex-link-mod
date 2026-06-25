@@ -73,9 +73,18 @@ Request:
   "gender": "female",
   "level": 18,
   "ball": "quick_ball",
-  "caughtAt": "2026-06-24T20:15:31Z"
+  "caughtAt": "2026-06-24T20:15:31Z",
+  "huntCount": 187,
+  "huntKind": "encounters",
+  "huntStartedAt": "2026-06-24T18:02:11Z"
 }
 ```
+
+`huntCount`, `huntKind`, and `huntStartedAt` are present **only** when this catch (or egg hatch)
+completed an active shiny hunt for the player. `huntCount` is the total attempts it took
+(encounters + egg hatches + manual bumps), and `huntKind` is `"encounters"`, `"eggs"`, or
+`"mixed"`. All three are omitted for an ordinary catch. Egg hunts complete on hatch — for those,
+the payload arrives with `ball` null and `shiny` true, since hatching never fires a capture.
 
 `aspects` is the Cobblemon aspect list for the captured Pokémon (e.g.
 `["alolan"]`, `["region-bias-alola"]`). It is omitted for a plain form. The

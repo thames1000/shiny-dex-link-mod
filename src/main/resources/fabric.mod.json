@@ -3,7 +3,7 @@
   "id": "shinydex-link",
   "version": "${version}",
   "name": "ShinyDex Link",
-  "description": "Server-side Shiny Dex companion integration for Cobblemon catches.",
+  "description": "Shiny Dex companion integration for Cobblemon catches, with an in-game shiny hunt counter overlay.",
   "authors": [
     "Thamescape"
   ],
@@ -11,10 +11,13 @@
     "homepage": "https://cobblemon-shiny-dex.vercel.app"
   },
   "license": "MIT",
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
-    "server": [
+    "main": [
       "com.thames.shinydexlink.ShinyDexLinkMod"
+    ],
+    "client": [
+      "com.thames.shinydexlink.client.ShinyDexLinkClient"
     ]
   },
   "depends": {
