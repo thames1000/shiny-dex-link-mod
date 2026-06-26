@@ -149,11 +149,16 @@ Response:
 
 ## POST `/minecraft/hunts/sync`
 
-Pushes a linked player's **active shiny hunts** so their progress persists server-side and follows
-them across sessions or devices. The mod sends this when a player **disconnects**. The `hunts` list
-is a **full snapshot and authoritative** — the backend should replace whatever it had stored for
-this player with exactly this list, and an **empty list clears** their stored hunts (e.g. they
-stopped or completed everything). Unlinked players are only sent when `syncUnlinkedPlayers` is on.
+Pushes a linked player's **currently-active shiny hunts** so their progress persists server-side and
+follows them across sessions or devices. The mod sends this when a player **disconnects**. The
+`hunts` list is the **full snapshot of active hunts**. Unlinked players are only sent when
+`syncUnlinkedPlayers` is on.
+
+The backend keeps a **history**: it stores an `active` map and an `inactive` map (both keyed by
+`species|form`). The snapshot becomes `active`; any hunt that was active but is **no longer in the
+snapshot** (stopped or finished in-game) is **moved to `inactive`** with its last counts — never
+discarded — so it can be resumed later. A hunt that reappears in a later snapshot is promoted back
+to `active`. So an empty list doesn't erase history; it just means no hunts are active right now.
 
 Request:
 
@@ -182,20 +187,25 @@ Request:
 }
 ```
 
-`form` is null for an any-form hunt. `total` is `encounters + eggs + manual` (never negative). Store
-the hunts keyed by the player and `species`+`form` so a later fetch can find them.
+`form` is null for an any-form hunt. `total` is `encounters + eggs + manual` (never negative).
 
 Response:
 
 ```json
-{ "success": true, "message": "OK", "stored": 1 }
+{ "success": true, "message": "OK", "stored": 1, "archived": 2 }
 ```
+
+`stored` is the active hunt count; `archived` is how many hunts are now in the inactive history.
 
 ## POST `/minecraft/hunts/fetch`
 
 Looks up saved progress for **one** hunt (a player + `species`, optionally a `form`). The mod calls
 this when a **hunt starts**, to resume the counter. If `form` is omitted/null, match the player's
 any-form hunt for that species.
+
+By default this searches only the player's **active** hunts. When `includeInactive` is `true` (the
+mod sets it when **starting a new hunt**), it also falls back to the **inactive** history to find a
+start point — so picking a species you hunted before resumes from where you left off.
 
 Request:
 
@@ -206,16 +216,18 @@ Request:
   "minecraftUuid": "uuid",
   "minecraftName": "Thamescape",
   "species": "mareep",
-  "form": null
+  "form": null,
+  "includeInactive": true
 }
 ```
 
-Response when progress exists:
+Response when progress exists (`status` is the bucket it came from — `"active"` or `"inactive"`):
 
 ```json
 {
   "success": true,
   "found": true,
+  "status": "inactive",
   "hunt": {
     "species": "mareep",
     "form": null,
@@ -232,9 +244,10 @@ Response when progress exists:
 }
 ```
 
-When there is no saved hunt, return `{ "success": true, "found": false, "hunt": null }`. The mod
-only applies the fetched progress if the freshly started hunt hasn't been counted yet, so a missing
-or failed fetch simply leaves the hunt at 0 — it never overwrites local progress.
+When there is no matching hunt (in `active`, or in `inactive` when `includeInactive`), return
+`{ "success": true, "found": false, "hunt": null }`. The mod only applies the fetched progress if
+the freshly started hunt hasn't been counted yet, so a missing or failed fetch simply leaves the
+hunt at 0 — it never overwrites local progress.
 
 ## POST `/minecraft/test-event`
 

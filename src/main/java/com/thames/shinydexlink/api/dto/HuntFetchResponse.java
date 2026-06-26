@@ -8,6 +8,8 @@ public final class HuntFetchResponse {
     public boolean success;
     public boolean found;
     public String message;
+    /** Which bucket the hunt came from: {@code "active"} (resumed) or {@code "inactive"} (history). */
+    public String status;
     public HuntProgressDto hunt;
 
     public static HuntFetchResponse notFound() {

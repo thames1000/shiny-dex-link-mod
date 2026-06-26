@@ -103,8 +103,9 @@ public final class HuntProgressSync {
             return;
         }
         String key = HuntState.makeKey(species, form);
+        // Starting a hunt: search active hunts first, then the inactive history for a start point.
         HuntFetchRequest request = new HuntFetchRequest(
-                config.serverId, uuid.toString(), player.getGameProfile().getName(), species, form);
+                config.serverId, uuid.toString(), player.getGameProfile().getName(), species, form, true);
 
         apiClient.fetchHunt(request).whenComplete((response, throwable) -> {
             if (throwable != null || response == null || !response.success || !response.found || response.hunt == null) {
@@ -114,15 +115,16 @@ public final class HuntProgressSync {
                 return;
             }
             HuntProgressDto dto = response.hunt;
+            boolean fromHistory = "inactive".equals(response.status);
             MinecraftServer server = player.getServer();
             if (server == null) {
                 return;
             }
-            server.execute(() -> applySeed(player, uuid, key, dto));
+            server.execute(() -> applySeed(player, uuid, key, dto, fromHistory));
         });
     }
 
-    private void applySeed(ServerPlayer player, UUID uuid, String key, HuntProgressDto dto) {
+    private void applySeed(ServerPlayer player, UUID uuid, String key, HuntProgressDto dto, boolean fromHistory) {
         HuntState current = huntManager.find(uuid, key).orElse(null);
         if (current == null || current.total() != 0) {
             // Hunt was stopped, or the player already started counting — leave local progress alone.
@@ -135,8 +137,9 @@ public final class HuntProgressSync {
                         return;
                     }
                     HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
+                    String source = fromHistory ? "a previous hunt" : "ShinyDex";
                     player.sendSystemMessage(Component.literal(
-                            "Resumed your " + updated.displayName + " hunt from ShinyDex at " + updated.total() + "."));
+                            "Resumed your " + updated.displayName + " hunt from " + source + " at " + updated.total() + "."));
                 });
     }
 

@@ -3,6 +3,9 @@ package com.thames.shinydexlink.api.dto;
 /**
  * Asks the backend for any saved progress for one hunt (a player + species, optionally a form),
  * sent when a hunt starts so it can resume. {@code serverToken} is added by the API client.
+ *
+ * <p>{@code includeInactive} tells the backend to also search the player's stopped/finished hunt
+ * history (not just currently-active hunts) for a starting point — set when starting a new hunt.
  */
 public final class HuntFetchRequest {
     public String serverId;
@@ -10,15 +13,18 @@ public final class HuntFetchRequest {
     public String minecraftName;
     public String species;
     public String form;
+    public boolean includeInactive;
 
     public HuntFetchRequest() {
     }
 
-    public HuntFetchRequest(String serverId, String minecraftUuid, String minecraftName, String species, String form) {
+    public HuntFetchRequest(String serverId, String minecraftUuid, String minecraftName, String species, String form,
+            boolean includeInactive) {
         this.serverId = serverId;
         this.minecraftUuid = minecraftUuid;
         this.minecraftName = minecraftName;
         this.species = species;
         this.form = form;
+        this.includeInactive = includeInactive;
     }
 }
