@@ -3,6 +3,7 @@ package com.thames.shinydexlink.client;
 import com.thames.shinydexlink.net.HuntUpdatePayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.loader.api.FabricLoader;
 
 /**
  * Client entrypoint: receives hunt snapshots from the server into {@link ClientHuntState} and
@@ -12,6 +13,8 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 public final class ShinyDexLinkClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
+        ClientOverlayConfig.init(FabricLoader.getInstance().getConfigDir());
+
         ClientPlayNetworking.registerGlobalReceiver(HuntUpdatePayload.TYPE, (payload, context) ->
                 context.client().execute(() -> ClientHuntState.update(payload)));
 

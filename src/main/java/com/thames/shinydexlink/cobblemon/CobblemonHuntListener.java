@@ -102,16 +102,20 @@ public final class CobblemonHuntListener {
             }
             for (ServerPlayer player : players(battle)) {
                 UUID uuid = player.getUUID();
-                HuntState state = huntManager.get(uuid).orElse(null);
-                if (state == null || !state.countEncounters) {
-                    continue;
-                }
-                for (Species species : wild) {
-                    if (state.matches(species.id, species.form)) {
-                        huntManager.recordEncounter(uuid)
-                                .ifPresent(updated -> HuntNetworking.sendUpdate(player, updated));
-                        break; // one encounter per battle
+                boolean changed = false;
+                for (HuntState state : huntManager.getAll(uuid)) {
+                    if (!state.countEncounters) {
+                        continue;
                     }
+                    for (Species species : wild) {
+                        if (state.matches(species.id, species.form)) {
+                            changed |= huntManager.recordEncounter(uuid, state.key()).isPresent();
+                            break; // one encounter per battle per hunt
+                        }
+                    }
+                }
+                if (changed) {
+                    HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
                 }
             }
         } catch (RuntimeException exception) {
@@ -132,23 +136,37 @@ public final class CobblemonHuntListener {
             UUID uuid = serverPlayer.getUUID();
             String species = CobblemonReflect.speciesId(pokemon);
             String form = CobblemonReflect.normalize(CobblemonReflect.formName(pokemon));
-            HuntState state = huntManager.get(uuid).orElse(null);
-            if (state == null || !state.matches(species, form)) {
+
+            List<HuntState> matching = new ArrayList<>();
+            HuntState primary = null;
+            for (HuntState state : huntManager.getAll(uuid)) {
+                if (!state.matches(species, form)) {
+                    continue;
+                }
+                matching.add(state);
+                huntManager.recordEgg(uuid, state.key());
+                // Prefer a form-specific hunt to stamp the catch with the tightest tally.
+                if (primary == null || (primary.form == null && state.form != null)) {
+                    primary = state;
+                }
+            }
+            if (primary == null) {
                 return;
             }
 
-            HuntState updated = huntManager.recordEgg(uuid).orElse(state);
-            HuntNetworking.sendUpdate(serverPlayer, updated);
-
+            HuntState updatedPrimary = huntManager.find(uuid, primary.key()).orElse(primary);
             if (CobblemonReflect.booleanProperty(pokemon, "shiny", false)) {
-                completeEggHunt(serverPlayer, uuid, pokemon, species, form, updated);
+                completeEggHunt(serverPlayer, uuid, pokemon, species, form, updatedPrimary, matching);
+            } else {
+                HuntNetworking.sendUpdate(serverPlayer, huntManager.getAll(uuid));
             }
         } catch (RuntimeException exception) {
             logger.debug("Failed to process Cobblemon egg hatch for ShinyDex hunts", exception);
         }
     }
 
-    private void completeEggHunt(ServerPlayer player, UUID uuid, Object pokemon, String species, String form, HuntState state) {
+    private void completeEggHunt(ServerPlayer player, UUID uuid, Object pokemon, String species, String form,
+            HuntState state, List<HuntState> matching) {
         if (linkedPlayerStore.isLinked(uuid) || config.syncUnlinkedPlayers) {
             Instant hatchedAt = Instant.now();
             CatchEventRequest request = new CatchEventRequest();
@@ -170,8 +188,11 @@ public final class CobblemonHuntListener {
             request.huntStartedAt = state.startedAt == null ? null : TimeUtil.format(state.startedAt);
             syncService.submitCatch(request, player);
         }
-        huntManager.stop(uuid);
-        HuntNetworking.sendUpdate(player, null);
+        // A shiny hatch satisfies every hunt that was watching this species/form.
+        for (HuntState done : matching) {
+            huntManager.stop(uuid, done.key());
+        }
+        HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
     }
 
     private List<ServerPlayer> players(Object battle) {

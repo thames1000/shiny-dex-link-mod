@@ -8,11 +8,14 @@ ShinyDex Link. If you only want catch syncing (no overlay), you can skip the cli
 
 ## 1. What it does
 
-- Shows a **hunt counter overlay** (top-left) for the species you're hunting.
-- **Counts automatically** when you battle the target (encounters) or hatch an egg of the target.
-- **Counts manually** with keybinds, for spawns you only see or for fixups.
-- When you finally **catch or hatch the shiny**, the final count is attached to the catch that
-  syncs to the Shiny Dex website, then the hunt clears.
+- Shows a **hunt counter overlay** for every species you're hunting — you can run several hunts at
+  once (up to `maxConcurrentHunts`, default 10).
+- **Counts automatically** when you battle a target (encounters) or hatch an egg of a target.
+- **Counts manually** with per-hunt `+`/`-` buttons in the hunt screen, for spawns you only see or
+  for fixups.
+- **Place the overlay anywhere** — drag it to your preferred spot; the choice is saved per client.
+- When you finally **catch or hatch a shiny**, that hunt's final count is attached to the catch
+  that syncs to the Shiny Dex website, then that hunt clears.
 
 ---
 
@@ -85,7 +88,9 @@ Edit `config/shinydex-link.json` (on the server, or your single-player instance)
 
   "enableHuntCounter": true,
   "huntCountEncounters": true,
-  "huntCountEggHatches": true
+  "huntCountEggHatches": true,
+  "maxConcurrentHunts": 10,
+  "syncHuntProgress": true
 }
 ```
 
@@ -94,6 +99,10 @@ Edit `config/shinydex-link.json` (on the server, or your single-player instance)
 - `enableHuntCounter` — master switch for the whole hunt feature.
 - `huntCountEncounters` / `huntCountEggHatches` — the **defaults** applied to each new hunt; you
   can still toggle either per hunt in-game.
+- `maxConcurrentHunts` — how many hunts one player may run at the same time (default 10).
+- `syncHuntProgress` — when on (and you're linked), your hunts are saved to the website as you
+  **disconnect**, and a hunt you **start** resumes from the site's saved count if it has one. With
+  `mock`/blank `apiBaseUrl` the fetch just reports "no saved hunt", so hunts start at 0.
 
 Restart after editing.
 
@@ -112,38 +121,48 @@ work whether or not you're linked, but the **completion won't sync** until you l
 
 ## 7. Start and run a hunt
 
-You can drive a hunt from **commands**, the **hunt screen**, or **keybinds** — they all act on the
-same server-side hunt.
+You can drive hunts from **commands** or the **hunt screen** — both act on the same
+server-side hunts. You may have several hunts running at once (default cap 10).
 
 ### Commands
 
 | Command | Action |
 |---|---|
-| `/shinydex hunt <species>` | Start hunting a species (e.g. `/shinydex hunt mareep`). Resets count to 0. |
-| `/shinydex hunt <species> <form>` | Hunt a specific form (e.g. `/shinydex hunt vulpix alolan`). |
-| `/shinydex hunt status` | Show target, total, and the encounter/egg/manual breakdown. |
-| `/shinydex hunt reset` | Set the counter back to 0, keep the same target. |
-| `/shinydex hunt stop` | End the hunt (hides the overlay). |
-| `/shinydex hunt encounters` | Toggle auto-counting battles on/off for this hunt. |
-| `/shinydex hunt eggs` | Toggle auto-counting egg hatches on/off for this hunt. |
+| `/shinydex hunt <species>` | Start hunting a species (e.g. `/shinydex hunt mareep`). Adds a new hunt, or resets it to 0 if already running. |
+| `/shinydex hunt <species> <form>` | Hunt a specific form (e.g. `/shinydex hunt vulpix alolan`). A separate hunt from the any-form one. |
+| `/shinydex hunt status` | List every active hunt with its total and encounter/egg/manual breakdown. |
+| `/shinydex hunt reset [species [form]]` | Reset one hunt's counter to 0 (or **all** if no species given). |
+| `/shinydex hunt stop [species [form]]` | End one hunt (or **all** if no species given). |
+| `/shinydex hunt encounters [species [form]]` | Toggle auto-counting battles for one hunt (or all). |
+| `/shinydex hunt eggs [species [form]]` | Toggle auto-counting egg hatches for one hunt (or all). |
+
+> For the per-hunt commands, if you give only a species and a single hunt matches it, that hunt is
+> used; if several forms of that species are active, add the form to disambiguate.
 
 > Use the species **id** (lowercase, e.g. `mareep`, `mr_mime`), not necessarily the display name.
 
 ### Hunt screen (default key: `H`)
 
 - Type a species — **live suggestions** appear from Cobblemon's registry; click one to fill it in.
-- **Start hunt** — begins/replaces the hunt for the typed species.
-- **Stop** / **Reset** — same as the commands.
-- **Encounters: ON/OFF** and **Eggs: ON/OFF** — toggle auto-counting.
-- The top line is a **live preview** of the current hunt and counts.
+  (Type `species form`, e.g. `vulpix alolan`, to pin a form.)
+- **Add hunt** — starts a new hunt for the typed species (up to the cap).
+- Each active hunt gets its **own row** with: `-` / `+` (manual count), **Enc:On/Off** and
+  **Egg:On/Off** (toggle auto-counting), **Reset**, and **Stop**.
+- **Edit overlay position** — opens the drag editor (see below).
+- **Stop all hunts** — clears every hunt at once.
+
+### Overlay placement
+
+The overlay starts in the **top-right** corner, clear of the battle info Cobblemon draws top-left.
+To move it, open the hunt screen → **Edit overlay position**, drag the panel anywhere, then press
+**Done**. The position is saved per client in `config/shinydex-link-client.json` (use **Reset to
+default** to return it to the corner).
 
 ### Keybinds (rebindable in Options → Controls → category "ShinyDex Link")
 
 | Default key | Action |
 |---|---|
-| `=` | Counter **+1** (manual) |
-| `-` | Counter **−1** (manual) |
-| `H` | Open the hunt screen |
+| `H` | Open the hunt screen (per-hunt `+`/`-` live there) |
 | *(unbound)* | Toggle the overlay on/off (set a key if you want it) |
 
 ---
@@ -154,11 +173,13 @@ While a hunt is active, the counter goes up from:
 
 - **Encounters** — entering a wild battle against the target species (auto, if enabled). Wild
   spawns by themselves aren't counted because they aren't tied to a specific player — the battle
-  is the first attributable moment. Use the manual `+` key if you want to count every spawn you see.
+  is the first attributable moment. Use the row's `+` button to count every spawn you see.
 - **Egg hatches** — hatching an egg of the target species (auto, if enabled).
-- **Manual** — the `+` / `-` keys, for anything the auto counters can't see.
+- **Manual** — the row's `+` / `-` buttons, for anything the auto counters can't see.
 
-The overlay shows the **total** plus an `Enc … Eggs …` breakdown.
+The overlay shows each hunt's **total** plus an `(E… G…)` encounters/eggs breakdown. A single
+battle or hatch increments **every** matching hunt (e.g. an any-form and a form-specific hunt for
+the same species).
 
 ---
 
@@ -186,7 +207,7 @@ hunt count rides along in the queued event.
   with the vanilla HUD. Check you didn't toggle it off.
 - **Counter doesn't auto-increment on battles/eggs.** Confirm Cobblemon `1.7.3` is installed and
   check the server log at startup for `Registered ShinyDex Cobblemon hunt hooks`. If a hook failed
-  to attach (Cobblemon API change), the log says so and the **manual `+` key** still works.
+  to attach (Cobblemon API change), the log says so and the **manual `+` button** still works.
 - **No species suggestions in the screen.** That list comes from Cobblemon's registry via the
   client; it's empty if Cobblemon isn't on the client. You can still type the species id manually.
 - **Catch didn't sync the count.** You must be **linked** (`/shinydex link`), and the caught/hatched
@@ -202,6 +223,6 @@ hunt count rides along in the queued event.
 2. Install Fabric API + Cobblemon 1.7.3
 3. Launch once, set apiBaseUrl + serverToken in config/shinydex-link.json, restart
 4. /shinydex link <code>           (one-time, from the website)
-5. /shinydex hunt mareep           (or press H and pick a species)
-6. Battle / hatch / press = to count; catch or hatch the shiny → count syncs automatically
+5. /shinydex hunt mareep           (or press H and add a species; start more hunts if you like)
+6. Battle / hatch / use a row's + to count; catch or hatch the shiny → count syncs automatically
 ```

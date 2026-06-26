@@ -4,6 +4,8 @@ import com.thames.shinydexlink.cobblemon.SpeciesLookup;
 import com.thames.shinydexlink.config.ShinyDexConfig;
 import com.thames.shinydexlink.hunt.HuntManager;
 import com.thames.shinydexlink.hunt.HuntState;
+import com.thames.shinydexlink.sync.HuntProgressSync;
+import java.util.List;
 import java.util.UUID;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -19,11 +21,13 @@ import org.slf4j.Logger;
  */
 public final class HuntNetworking {
     private final HuntManager huntManager;
+    private final HuntProgressSync huntProgressSync;
     private final ShinyDexConfig config;
     private final Logger logger;
 
-    public HuntNetworking(HuntManager huntManager, ShinyDexConfig config, Logger logger) {
+    public HuntNetworking(HuntManager huntManager, HuntProgressSync huntProgressSync, ShinyDexConfig config, Logger logger) {
         this.huntManager = huntManager;
+        this.huntProgressSync = huntProgressSync;
         this.config = config;
         this.logger = logger;
     }
@@ -46,24 +50,26 @@ public final class HuntNetworking {
             return;
         }
         UUID uuid = player.getUUID();
+        String key = payload.arg();
         try {
             switch (payload.action()) {
-                case HuntActionPayload.ACTION_INCREMENT -> huntManager.adjustManual(uuid, 1);
-                case HuntActionPayload.ACTION_DECREMENT -> huntManager.adjustManual(uuid, -1);
-                case HuntActionPayload.ACTION_RESET -> huntManager.reset(uuid);
-                case HuntActionPayload.ACTION_TOGGLE_EGGS -> huntManager.toggleEggs(uuid);
-                case HuntActionPayload.ACTION_TOGGLE_ENCOUNTERS -> huntManager.toggleEncounters(uuid);
-                case HuntActionPayload.ACTION_STOP -> huntManager.stop(uuid);
-                case HuntActionPayload.ACTION_SET_TARGET -> setTarget(uuid, payload.arg());
+                case HuntActionPayload.ACTION_INCREMENT -> huntManager.adjustManual(uuid, key, 1);
+                case HuntActionPayload.ACTION_DECREMENT -> huntManager.adjustManual(uuid, key, -1);
+                case HuntActionPayload.ACTION_RESET -> huntManager.reset(uuid, key);
+                case HuntActionPayload.ACTION_TOGGLE_EGGS -> huntManager.toggleEggs(uuid, key);
+                case HuntActionPayload.ACTION_TOGGLE_ENCOUNTERS -> huntManager.toggleEncounters(uuid, key);
+                case HuntActionPayload.ACTION_STOP -> huntManager.stop(uuid, key);
+                case HuntActionPayload.ACTION_STOP_ALL -> huntManager.stopAll(uuid);
+                case HuntActionPayload.ACTION_SET_TARGET -> setTarget(player, key);
                 default -> logger.debug("Ignoring unknown ShinyDex hunt action: {}", payload.action());
             }
         } catch (RuntimeException exception) {
             logger.warn("Failed to apply ShinyDex hunt action {} for {}", payload.action(), uuid, exception);
         }
-        sendUpdate(player, huntManager.get(uuid).orElse(null));
+        sendUpdate(player, huntManager.getAll(uuid));
     }
 
-    private void setTarget(UUID uuid, String arg) {
+    private void setTarget(ServerPlayer player, String arg) {
         if (arg == null || arg.isBlank()) {
             return;
         }
@@ -74,32 +80,42 @@ public final class HuntNetworking {
             species = arg.substring(0, separator);
             form = arg.substring(separator + 1);
         }
-        huntManager.setTarget(uuid, species, SpeciesLookup.displayName(species), form,
+        HuntState state = huntManager.setTarget(player.getUUID(), species, SpeciesLookup.displayName(species), form,
                 config.huntCountEncounters, config.huntCountEggHatches);
+        if (state != null) {
+            // Resume from any progress the website has saved for this species/form.
+            huntProgressSync.fetchAndSeed(player, state.species, state.form);
+        }
     }
 
-    /** Pushes a hunt snapshot to one player; a null state hides their overlay. */
-    public static void sendUpdate(ServerPlayer player, HuntState state) {
+    /** Pushes a snapshot of all the player's hunts; an empty list hides their overlay. */
+    public static void sendUpdate(ServerPlayer player, List<HuntState> states) {
         if (player == null) {
             return;
         }
-        ServerPlayNetworking.send(player, toPayload(state));
+        ServerPlayNetworking.send(player, toPayload(states));
     }
 
-    public static HuntUpdatePayload toPayload(HuntState state) {
-        if (state == null || state.species == null) {
+    public static HuntUpdatePayload toPayload(List<HuntState> states) {
+        if (states == null || states.isEmpty()) {
             return HuntUpdatePayload.inactive();
         }
-        return new HuntUpdatePayload(
-                true,
-                state.species,
-                state.displayName,
-                state.form == null ? "" : state.form,
-                state.total(),
-                state.encounters,
-                state.eggs,
-                state.countEncounters,
-                state.countEggs
-        );
+        List<HuntUpdatePayload.Entry> entries = new java.util.ArrayList<>(states.size());
+        for (HuntState state : states) {
+            if (state == null || state.species == null) {
+                continue;
+            }
+            entries.add(new HuntUpdatePayload.Entry(
+                    state.species,
+                    state.displayName,
+                    state.form == null ? "" : state.form,
+                    state.total(),
+                    state.encounters,
+                    state.eggs,
+                    state.countEncounters,
+                    state.countEggs
+            ));
+        }
+        return new HuntUpdatePayload(entries);
     }
 }

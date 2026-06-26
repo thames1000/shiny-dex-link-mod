@@ -123,14 +123,30 @@ public final class CobblemonCaptureListener {
         if (!config.enableHuntCounter) {
             return;
         }
-        HuntState state = huntManager.get(uuid).orElse(null);
-        if (state == null || !state.matches(request.species, request.form)) {
+        // The catch may satisfy several of the player's hunts (e.g. an any-form and a form-specific
+        // hunt for the same species). Stamp the catch with the most specific match and stop them all.
+        HuntState primary = null;
+        boolean matched = false;
+        for (HuntState state : huntManager.getAll(uuid)) {
+            if (!state.matches(request.species, request.form)) {
+                continue;
+            }
+            matched = true;
+            if (primary == null || (primary.form == null && state.form != null)) {
+                primary = state;
+            }
+        }
+        if (!matched) {
             return;
         }
-        request.huntCount = state.total();
-        request.huntKind = state.kind();
-        request.huntStartedAt = state.startedAt == null ? null : TimeUtil.format(state.startedAt);
-        huntManager.stop(uuid);
-        HuntNetworking.sendUpdate(player, null);
+        request.huntCount = primary.total();
+        request.huntKind = primary.kind();
+        request.huntStartedAt = primary.startedAt == null ? null : TimeUtil.format(primary.startedAt);
+        for (HuntState state : huntManager.getAll(uuid)) {
+            if (state.matches(request.species, request.form)) {
+                huntManager.stop(uuid, state.key());
+            }
+        }
+        HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
     }
 }

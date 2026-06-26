@@ -9,15 +9,14 @@ import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Client keybinds for the hunt counter. Increment/decrement send a manual adjustment to the
- * server; the others are purely client-side (open the screen, hide/show the overlay). All
- * default bindings can be rebound in Options - Controls.
+ * Client keybinds for the hunt counter. Both are purely client-side: open the hunt screen (where
+ * each hunt has its own counter buttons) and hide/show the overlay. Manual +/- live per-hunt in the
+ * screen now that several hunts can run at once. Default bindings can be rebound in Options -
+ * Controls.
  */
 public final class HuntKeybinds {
     private static final String CATEGORY = "key.categories.shinydex-link";
 
-    private static KeyMapping increment;
-    private static KeyMapping decrement;
     private static KeyMapping openScreen;
     private static KeyMapping toggleOverlay;
 
@@ -25,8 +24,6 @@ public final class HuntKeybinds {
     }
 
     public static void register() {
-        increment = register("key.shinydex-link.increment", GLFW.GLFW_KEY_EQUAL);
-        decrement = register("key.shinydex-link.decrement", GLFW.GLFW_KEY_MINUS);
         openScreen = register("key.shinydex-link.open_screen", GLFW.GLFW_KEY_H);
         toggleOverlay = register("key.shinydex-link.toggle_overlay", InputConstants.UNKNOWN.getValue());
 
@@ -39,12 +36,6 @@ public final class HuntKeybinds {
     }
 
     private static void onClientTick(Minecraft client) {
-        while (increment.consumeClick()) {
-            send(HuntActionPayload.of(HuntActionPayload.ACTION_INCREMENT));
-        }
-        while (decrement.consumeClick()) {
-            send(HuntActionPayload.of(HuntActionPayload.ACTION_DECREMENT));
-        }
         while (toggleOverlay.consumeClick()) {
             ClientHuntState.toggleOverlay();
         }

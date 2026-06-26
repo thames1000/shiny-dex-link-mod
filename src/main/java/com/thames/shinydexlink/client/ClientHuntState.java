@@ -1,74 +1,71 @@
 package com.thames.shinydexlink.client;
 
 import com.thames.shinydexlink.net.HuntUpdatePayload;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Read-only client mirror of the server's hunt state, fed by {@link HuntUpdatePayload}. The
- * overlay and hunt screen read from here. {@code overlayVisible} is a purely local toggle and
- * is not synced to the server.
+ * Read-only client mirror of the server's hunts, fed by {@link HuntUpdatePayload}. The overlay and
+ * hunt screen read the {@link #hunts()} snapshot from here. Overlay visibility and placement are
+ * local-only and live in {@link ClientOverlayConfig}.
  */
 public final class ClientHuntState {
-    private static volatile boolean active;
-    private static volatile String displayName = "";
-    private static volatile String form = "";
-    private static volatile int total;
-    private static volatile int encounters;
-    private static volatile int eggs;
-    private static volatile boolean countEncounters = true;
-    private static volatile boolean countEggs = true;
-    private static volatile boolean overlayVisible = true;
+    /** One hunt as the client sees it. {@link #key()} matches the server's {@code HuntState.key()}. */
+    public record HuntView(
+            String species,
+            String displayName,
+            String form,
+            int total,
+            int encounters,
+            int eggs,
+            boolean countEncounters,
+            boolean countEggs
+    ) {
+        public String key() {
+            String s = species == null ? "" : species;
+            String f = form == null ? "" : form;
+            return s + "|" + f;
+        }
+
+        public boolean hasForm() {
+            return form != null && !form.isBlank();
+        }
+    }
+
+    private static volatile List<HuntView> hunts = List.of();
 
     private ClientHuntState() {
     }
 
     public static void update(HuntUpdatePayload payload) {
-        active = payload.active();
-        displayName = payload.displayName() == null ? "" : payload.displayName();
-        form = payload.form() == null ? "" : payload.form();
-        total = payload.total();
-        encounters = payload.encounters();
-        eggs = payload.eggs();
-        countEncounters = payload.countEncounters();
-        countEggs = payload.countEggs();
+        List<HuntView> next = new ArrayList<>();
+        for (HuntUpdatePayload.Entry entry : payload.hunts()) {
+            next.add(new HuntView(
+                    entry.species(),
+                    entry.displayName() == null ? "" : entry.displayName(),
+                    entry.form() == null ? "" : entry.form(),
+                    entry.total(),
+                    entry.encounters(),
+                    entry.eggs(),
+                    entry.countEncounters(),
+                    entry.countEggs()));
+        }
+        hunts = List.copyOf(next);
+    }
+
+    public static List<HuntView> hunts() {
+        return hunts;
     }
 
     public static boolean isActive() {
-        return active;
-    }
-
-    public static String displayName() {
-        return displayName;
-    }
-
-    public static String form() {
-        return form;
-    }
-
-    public static int total() {
-        return total;
-    }
-
-    public static int encounters() {
-        return encounters;
-    }
-
-    public static int eggs() {
-        return eggs;
-    }
-
-    public static boolean countEncounters() {
-        return countEncounters;
-    }
-
-    public static boolean countEggs() {
-        return countEggs;
+        return !hunts.isEmpty();
     }
 
     public static boolean overlayVisible() {
-        return overlayVisible;
+        return ClientOverlayConfig.visible();
     }
 
     public static void toggleOverlay() {
-        overlayVisible = !overlayVisible;
+        ClientOverlayConfig.toggleVisible();
     }
 }

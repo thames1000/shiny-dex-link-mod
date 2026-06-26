@@ -6,6 +6,10 @@ import com.thames.shinydexlink.api.dto.ApiResponse;
 import com.thames.shinydexlink.api.dto.BerryReportRequest;
 import com.thames.shinydexlink.api.dto.BerryResponse;
 import com.thames.shinydexlink.api.dto.CatchEventRequest;
+import com.thames.shinydexlink.api.dto.HuntFetchRequest;
+import com.thames.shinydexlink.api.dto.HuntFetchResponse;
+import com.thames.shinydexlink.api.dto.HuntSyncRequest;
+import com.thames.shinydexlink.api.dto.HuntSyncResponse;
 import com.thames.shinydexlink.api.dto.LinkRequest;
 import com.thames.shinydexlink.api.dto.LinkResponse;
 import com.thames.shinydexlink.api.dto.UnlinkRequest;
@@ -59,6 +63,20 @@ public final class ShinyDexApiClient {
         JsonObject payload = JsonUtil.toObject(request);
         payload.addProperty("serverToken", config.serverToken);
         return post(ApiEndpoints.BERRIES, payload, BerryResponse.class, BerryResponse.success());
+    }
+
+    /** Pushes a player's hunt-progress snapshot to the site (on disconnect). */
+    public CompletableFuture<HuntSyncResponse> syncHunts(HuntSyncRequest request) {
+        JsonObject payload = JsonUtil.toObject(request);
+        payload.addProperty("serverToken", config.serverToken);
+        return post(ApiEndpoints.HUNT_SYNC, payload, HuntSyncResponse.class, HuntSyncResponse.success());
+    }
+
+    /** Fetches saved progress for one hunt so a starting hunt can resume. Mock => not found. */
+    public CompletableFuture<HuntFetchResponse> fetchHunt(HuntFetchRequest request) {
+        JsonObject payload = JsonUtil.toObject(request);
+        payload.addProperty("serverToken", config.serverToken);
+        return post(ApiEndpoints.HUNT_FETCH, payload, HuntFetchResponse.class, HuntFetchResponse.notFound());
     }
 
     public String serializeCatchPayloadForTest(CatchEventRequest request) {
@@ -148,6 +166,12 @@ public final class ShinyDexApiClient {
         if (response instanceof BerryResponse berryResponse) {
             return !berryResponse.success;
         }
+        if (response instanceof HuntSyncResponse huntSyncResponse) {
+            return !huntSyncResponse.success;
+        }
+        if (response instanceof HuntFetchResponse huntFetchResponse) {
+            return !huntFetchResponse.success;
+        }
         return false;
     }
 
@@ -160,6 +184,12 @@ public final class ShinyDexApiClient {
         }
         if (response instanceof BerryResponse berryResponse) {
             return berryResponse.message;
+        }
+        if (response instanceof HuntSyncResponse huntSyncResponse) {
+            return huntSyncResponse.message;
+        }
+        if (response instanceof HuntFetchResponse huntFetchResponse) {
+            return huntFetchResponse.message;
         }
         return null;
     }

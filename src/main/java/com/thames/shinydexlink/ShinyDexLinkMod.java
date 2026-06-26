@@ -10,12 +10,14 @@ import com.thames.shinydexlink.data.EventQueue;
 import com.thames.shinydexlink.data.LinkedPlayerStore;
 import com.thames.shinydexlink.hunt.HuntManager;
 import com.thames.shinydexlink.net.HuntNetworking;
+import com.thames.shinydexlink.sync.HuntProgressSync;
 import com.thames.shinydexlink.sync.SyncService;
 import java.io.IOException;
 import java.nio.file.Path;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,20 +43,26 @@ public final class ShinyDexLinkMod implements ModInitializer {
         Path dataDir = configDir.resolve("shinydex-link");
         LinkedPlayerStore linkedPlayerStore = new LinkedPlayerStore(dataDir.resolve("linked_players.json"));
         EventQueue eventQueue = new EventQueue(dataDir.resolve("event_queue.json"));
-        HuntManager huntManager = new HuntManager(dataDir.resolve("hunts.json"), LOGGER);
+        HuntManager huntManager = new HuntManager(dataDir.resolve("hunts.json"), LOGGER, config.maxConcurrentHunts);
         loadStores(linkedPlayerStore, eventQueue, huntManager);
 
         ShinyDexApiClient apiClient = new ShinyDexApiClient(config, LOGGER);
         SyncService syncService = new SyncService(config, apiClient, linkedPlayerStore, eventQueue, LOGGER);
         syncService.start();
 
-        ShinyDexCommand command = new ShinyDexCommand(config, apiClient, linkedPlayerStore, eventQueue, huntManager, LOGGER);
+        HuntProgressSync huntProgressSync = new HuntProgressSync(config, apiClient, linkedPlayerStore, huntManager, LOGGER);
+
+        ShinyDexCommand command = new ShinyDexCommand(
+                config, apiClient, linkedPlayerStore, eventQueue, huntManager, huntProgressSync, LOGGER);
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> command.register(dispatcher));
 
-        new HuntNetworking(huntManager, config, LOGGER).registerServerReceiver();
+        new HuntNetworking(huntManager, huntProgressSync, config, LOGGER).registerServerReceiver();
 
         new CobblemonCaptureListener(config, linkedPlayerStore, huntManager, syncService, LOGGER).register();
         new CobblemonHuntListener(config, linkedPlayerStore, huntManager, syncService, LOGGER).register();
+
+        // Push a player's hunt progress to the website when they leave so it persists across sessions.
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> huntProgressSync.pushOnDisconnect(handler.player));
 
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             syncService.stop();

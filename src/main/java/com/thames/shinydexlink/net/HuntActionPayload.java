@@ -10,9 +10,10 @@ import net.minecraft.resources.ResourceLocation;
  * Client -> server hunt control, sent from keybinds and the hunt screen. The server validates
  * every action before applying it (an action for a player with no active hunt is ignored).
  *
- * <p>{@link #action} is one of the {@code ACTION_*} constants; {@link #arg} carries extra data
- * for {@link #ACTION_SET_TARGET} as {@code "species"} or {@code "species|form"} and is otherwise
- * empty.
+ * <p>{@link #action} is one of the {@code ACTION_*} constants. {@link #arg} names which hunt the
+ * action applies to as a {@code "species|form"} key: it is the target to start for
+ * {@link #ACTION_SET_TARGET}, the existing hunt to act on for the per-hunt actions, and empty for
+ * {@link #ACTION_STOP_ALL}.
  */
 public record HuntActionPayload(String action, String arg) implements CustomPacketPayload {
 
@@ -20,6 +21,7 @@ public record HuntActionPayload(String action, String arg) implements CustomPack
     public static final String ACTION_DECREMENT = "decrement";
     public static final String ACTION_RESET = "reset";
     public static final String ACTION_STOP = "stop";
+    public static final String ACTION_STOP_ALL = "stop_all";
     public static final String ACTION_SET_TARGET = "set_target";
     public static final String ACTION_TOGGLE_EGGS = "toggle_eggs";
     public static final String ACTION_TOGGLE_ENCOUNTERS = "toggle_encounters";

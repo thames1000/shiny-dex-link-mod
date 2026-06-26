@@ -1,7 +1,5 @@
 {
   "key.categories.shinydex-link": "ShinyDex Link",
-  "key.shinydex-link.increment": "Hunt counter +1",
-  "key.shinydex-link.decrement": "Hunt counter -1",
   "key.shinydex-link.open_screen": "Open hunt screen",
   "key.shinydex-link.toggle_overlay": "Toggle hunt overlay"
 }

@@ -12,6 +12,10 @@ Hunt-counter keys:
   species is encountered in a wild battle.
 - `huntCountEggHatches` (default `true`) — default for new hunts: auto +1 when an egg of the
   target species hatches.
+- `maxConcurrentHunts` (default `10`) — how many distinct hunts one player may run at once.
+- `syncHuntProgress` (default `true`) — push a player's hunts to the website when they disconnect,
+  and pull saved progress when a hunt starts so the counter resumes. Needs the player linked (or
+  `syncUnlinkedPlayers`).
 
 ## `config/shinydex-link/linked_players.json`
 
@@ -35,22 +39,40 @@ Stores failed catch events for retry. The server token is not persisted in queue
 
 ## `config/shinydex-link/hunts.json`
 
-Each player's active shiny hunt by Minecraft UUID. Survives restarts; cleared for a player when
-their hunt is caught/hatched or stopped.
+Each player's active shiny hunts by Minecraft UUID — a **list** per player, since one player can
+run several hunts at once (up to `maxConcurrentHunts`). Survives restarts; a hunt is removed when it
+is caught/hatched or stopped. Files written by the original single-hunt version (a single object per
+UUID instead of a list) are read and migrated automatically.
 
 ```json
 {
-  "minecraft-uuid-here": {
-    "species": "mareep",
-    "displayName": "Mareep",
-    "form": null,
-    "encounters": 42,
-    "eggs": 0,
-    "manual": 3,
-    "countEncounters": true,
-    "countEggs": true,
-    "startedAt": "2026-06-25T18:00:00Z",
-    "updatedAt": "2026-06-25T18:42:00Z"
-  }
+  "minecraft-uuid-here": [
+    {
+      "species": "mareep",
+      "displayName": "Mareep",
+      "form": null,
+      "encounters": 42,
+      "eggs": 0,
+      "manual": 3,
+      "countEncounters": true,
+      "countEggs": true,
+      "startedAt": "2026-06-25T18:00:00Z",
+      "updatedAt": "2026-06-25T18:42:00Z"
+    }
+  ]
+}
+```
+
+## `config/shinydex-link-client.json`
+
+Client-only overlay preferences (not synced to the server): the saved overlay position and whether
+it is shown. `x`/`y` of `-1` mean "not yet placed", so the overlay falls back to its default
+top-right corner.
+
+```json
+{
+  "x": 312,
+  "y": 8,
+  "visible": true
 }
 ```

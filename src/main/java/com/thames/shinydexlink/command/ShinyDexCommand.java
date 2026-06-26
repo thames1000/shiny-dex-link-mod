@@ -20,6 +20,7 @@ import com.thames.shinydexlink.hunt.HuntState;
 import com.thames.shinydexlink.net.HuntNetworking;
 import com.thames.shinydexlink.sync.BerryScanner;
 import com.thames.shinydexlink.sync.CatchEventFactory;
+import com.thames.shinydexlink.sync.HuntProgressSync;
 import com.thames.shinydexlink.util.CooldownManager;
 import com.thames.shinydexlink.util.TimeUtil;
 import java.io.IOException;
@@ -39,6 +40,7 @@ public final class ShinyDexCommand {
     private final LinkedPlayerStore linkedPlayerStore;
     private final EventQueue eventQueue;
     private final HuntManager huntManager;
+    private final HuntProgressSync huntProgressSync;
     private final Logger logger;
     private final CooldownManager cooldowns = new CooldownManager();
 
@@ -48,6 +50,7 @@ public final class ShinyDexCommand {
             LinkedPlayerStore linkedPlayerStore,
             EventQueue eventQueue,
             HuntManager huntManager,
+            HuntProgressSync huntProgressSync,
             Logger logger
     ) {
         this.config = config;
@@ -55,6 +58,7 @@ public final class ShinyDexCommand {
         this.linkedPlayerStore = linkedPlayerStore;
         this.eventQueue = eventQueue;
         this.huntManager = huntManager;
+        this.huntProgressSync = huntProgressSync;
         this.logger = logger;
     }
 
@@ -70,11 +74,19 @@ public final class ShinyDexCommand {
                 .then(literal("test").executes(context -> test(context.getSource())))
                 .then(literal("hunt")
                         .executes(context -> huntStatus(context.getSource()))
-                        .then(literal("stop").executes(context -> huntStop(context.getSource())))
                         .then(literal("status").executes(context -> huntStatus(context.getSource())))
-                        .then(literal("reset").executes(context -> huntReset(context.getSource())))
-                        .then(literal("eggs").executes(context -> huntToggleEggs(context.getSource())))
-                        .then(literal("encounters").executes(context -> huntToggleEncounters(context.getSource())))
+                        .then(literal("stop")
+                                .executes(context -> huntStopAll(context.getSource()))
+                                .then(huntTargetArgs(this::huntStopOne)))
+                        .then(literal("reset")
+                                .executes(context -> huntResetAll(context.getSource()))
+                                .then(huntTargetArgs(this::huntResetOne)))
+                        .then(literal("eggs")
+                                .executes(context -> huntToggleEggsAll(context.getSource()))
+                                .then(huntTargetArgs(this::huntToggleEggsOne)))
+                        .then(literal("encounters")
+                                .executes(context -> huntToggleEncountersAll(context.getSource()))
+                                .then(huntTargetArgs(this::huntToggleEncountersOne)))
                         .then(argument("species", StringArgumentType.word())
                                 .executes(context -> huntSet(context.getSource(), StringArgumentType.getString(context, "species"), null))
                                 .then(argument("form", StringArgumentType.word())
@@ -84,22 +96,49 @@ public final class ShinyDexCommand {
                                                 StringArgumentType.getString(context, "form")))))));
     }
 
+    /** Shared {@code <species> [form]} argument subtree for per-hunt commands. */
+    private com.mojang.brigadier.builder.RequiredArgumentBuilder<CommandSourceStack, String> huntTargetArgs(
+            HuntTargetAction action) {
+        return argument("species", StringArgumentType.word())
+                .executes(ctx -> action.run(ctx.getSource(), StringArgumentType.getString(ctx, "species"), null))
+                .then(argument("form", StringArgumentType.word())
+                        .executes(ctx -> action.run(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "species"),
+                                StringArgumentType.getString(ctx, "form"))));
+    }
+
+    @FunctionalInterface
+    private interface HuntTargetAction {
+        int run(CommandSourceStack source, String species, String form) throws CommandSyntaxException;
+    }
+
     private int huntSet(CommandSourceStack source, String species, String form) throws CommandSyntaxException {
         ServerPlayer player = requireHunt(source);
         if (player == null) {
             return 0;
         }
-        String displayName = SpeciesLookup.displayName(species);
+        UUID uuid = player.getUUID();
+        String key = HuntState.makeKey(species, form);
+        boolean exists = huntManager.find(uuid, key).isPresent();
+        if (!exists && huntManager.size(uuid) >= huntManager.maxHunts()) {
+            source.sendFailure(Component.literal("You already have " + huntManager.maxHunts()
+                    + " active hunts (the max). Stop one with /shinydex hunt stop <species> first."));
+            return 0;
+        }
         HuntState state = huntManager.setTarget(
-                player.getUUID(), species, displayName, form,
+                uuid, species, SpeciesLookup.displayName(species), form,
                 config.huntCountEncounters, config.huntCountEggHatches);
         if (state == null) {
             source.sendFailure(Component.literal("Usage: /shinydex hunt <species> [form]"));
             return 0;
         }
-        HuntNetworking.sendUpdate(player, state);
+        HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
+        // Resume from any progress saved on the website for this species/form.
+        huntProgressSync.fetchAndSeed(player, state.species, state.form);
         String label = form == null ? state.displayName : state.displayName + " (" + form + ")";
-        source.sendSuccess(() -> Component.literal("Now hunting " + label + ". Counter reset to 0."), false);
+        int active = huntManager.size(uuid);
+        source.sendSuccess(() -> Component.literal("Now hunting " + label + ". Counter reset to 0. ("
+                + active + "/" + huntManager.maxHunts() + " hunts active)"), false);
         return 1;
     }
 
@@ -108,72 +147,155 @@ public final class ShinyDexCommand {
         if (player == null) {
             return 0;
         }
-        HuntState state = huntManager.get(player.getUUID()).orElse(null);
-        if (state == null) {
-            source.sendSuccess(() -> Component.literal("No active hunt. Start one with /shinydex hunt <species>."), false);
+        java.util.List<HuntState> hunts = huntManager.getAll(player.getUUID());
+        if (hunts.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No active hunts. Start one with /shinydex hunt <species>."), false);
             return 1;
         }
-        source.sendSuccess(() -> Component.literal(
-                "Hunting " + state.displayName + ": " + state.total() + " ("
-                        + state.encounters + " encounters, " + state.eggs + " eggs, " + state.manual + " manual). "
-                        + "Auto-count encounters=" + state.countEncounters + ", eggs=" + state.countEggs + "."), false);
+        source.sendSuccess(() -> Component.literal(hunts.size() + " active hunt(s):"), false);
+        for (HuntState state : hunts) {
+            String label = state.form == null ? state.displayName : state.displayName + " (" + state.form + ")";
+            source.sendSuccess(() -> Component.literal(
+                    " - " + label + ": " + state.total() + " ("
+                            + state.encounters + " enc, " + state.eggs + " eggs, " + state.manual + " manual). "
+                            + "auto enc=" + state.countEncounters + ", eggs=" + state.countEggs + "."), false);
+        }
         return 1;
     }
 
-    private int huntStop(CommandSourceStack source) throws CommandSyntaxException {
+    private int huntStopAll(CommandSourceStack source) throws CommandSyntaxException {
         ServerPlayer player = requireHunt(source);
         if (player == null) {
             return 0;
         }
-        huntManager.stop(player.getUUID());
-        HuntNetworking.sendUpdate(player, null);
-        source.sendSuccess(() -> Component.literal("Hunt stopped."), false);
+        int removed = huntManager.stopAll(player.getUUID());
+        HuntNetworking.sendUpdate(player, huntManager.getAll(player.getUUID()));
+        if (removed == 0) {
+            source.sendSuccess(() -> Component.literal("No active hunts to stop."), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("Stopped " + removed + " hunt(s)."), false);
+        }
         return 1;
     }
 
-    private int huntReset(CommandSourceStack source) throws CommandSyntaxException {
+    private int huntStopOne(CommandSourceStack source, String species, String form) throws CommandSyntaxException {
         ServerPlayer player = requireHunt(source);
         if (player == null) {
             return 0;
         }
-        HuntState state = huntManager.reset(player.getUUID()).orElse(null);
-        if (state == null) {
-            source.sendFailure(Component.literal("No active hunt to reset."));
+        HuntState target = resolveHunt(source, player.getUUID(), species, form);
+        if (target == null) {
             return 0;
         }
-        HuntNetworking.sendUpdate(player, state);
-        source.sendSuccess(() -> Component.literal("Hunt counter reset to 0."), false);
+        huntManager.stop(player.getUUID(), target.key());
+        HuntNetworking.sendUpdate(player, huntManager.getAll(player.getUUID()));
+        source.sendSuccess(() -> Component.literal("Stopped hunt for " + target.displayName + "."), false);
         return 1;
     }
 
-    private int huntToggleEggs(CommandSourceStack source) throws CommandSyntaxException {
+    private int huntResetAll(CommandSourceStack source) throws CommandSyntaxException {
+        return huntApplyAll(source, "reset", state -> huntManager.reset(state.uuid, state.key));
+    }
+
+    private int huntResetOne(CommandSourceStack source, String species, String form) throws CommandSyntaxException {
+        return huntApplyOne(source, species, form, "reset",
+                (uuid, key) -> huntManager.reset(uuid, key),
+                state -> state.displayName + " counter reset to 0.");
+    }
+
+    private int huntToggleEggsAll(CommandSourceStack source) throws CommandSyntaxException {
+        return huntApplyAll(source, "egg auto-count", state -> huntManager.toggleEggs(state.uuid, state.key));
+    }
+
+    private int huntToggleEggsOne(CommandSourceStack source, String species, String form) throws CommandSyntaxException {
+        return huntApplyOne(source, species, form, "egg auto-count",
+                (uuid, key) -> huntManager.toggleEggs(uuid, key),
+                state -> state.displayName + " auto-count egg hatches: " + state.countEggs + ".");
+    }
+
+    private int huntToggleEncountersAll(CommandSourceStack source) throws CommandSyntaxException {
+        return huntApplyAll(source, "encounter auto-count", state -> huntManager.toggleEncounters(state.uuid, state.key));
+    }
+
+    private int huntToggleEncountersOne(CommandSourceStack source, String species, String form) throws CommandSyntaxException {
+        return huntApplyOne(source, species, form, "encounter auto-count",
+                (uuid, key) -> huntManager.toggleEncounters(uuid, key),
+                state -> state.displayName + " auto-count encounters: " + state.countEncounters + ".");
+    }
+
+    /** Pairs a UUID with a hunt key so an all-hunts action can name each hunt as it iterates. */
+    private record HuntRef(UUID uuid, String key) {
+    }
+
+    private int huntApplyAll(CommandSourceStack source, String label,
+            java.util.function.Function<HuntRef, Optional<HuntState>> action) throws CommandSyntaxException {
         ServerPlayer player = requireHunt(source);
         if (player == null) {
             return 0;
         }
-        HuntState state = huntManager.toggleEggs(player.getUUID()).orElse(null);
-        if (state == null) {
-            source.sendFailure(Component.literal("No active hunt. Start one with /shinydex hunt <species>."));
+        UUID uuid = player.getUUID();
+        java.util.List<HuntState> hunts = huntManager.getAll(uuid);
+        if (hunts.isEmpty()) {
+            source.sendFailure(Component.literal("No active hunts."));
             return 0;
         }
-        HuntNetworking.sendUpdate(player, state);
-        source.sendSuccess(() -> Component.literal("Auto-count egg hatches: " + state.countEggs + "."), false);
+        for (HuntState state : hunts) {
+            action.apply(new HuntRef(uuid, state.key()));
+        }
+        HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
+        source.sendSuccess(() -> Component.literal("Applied " + label + " change to all " + hunts.size() + " hunt(s)."), false);
         return 1;
     }
 
-    private int huntToggleEncounters(CommandSourceStack source) throws CommandSyntaxException {
+    private int huntApplyOne(CommandSourceStack source, String species, String form, String label,
+            java.util.function.BiFunction<UUID, String, Optional<HuntState>> action,
+            java.util.function.Function<HuntState, String> message) throws CommandSyntaxException {
         ServerPlayer player = requireHunt(source);
         if (player == null) {
             return 0;
         }
-        HuntState state = huntManager.toggleEncounters(player.getUUID()).orElse(null);
-        if (state == null) {
-            source.sendFailure(Component.literal("No active hunt. Start one with /shinydex hunt <species>."));
+        UUID uuid = player.getUUID();
+        HuntState target = resolveHunt(source, uuid, species, form);
+        if (target == null) {
             return 0;
         }
-        HuntNetworking.sendUpdate(player, state);
-        source.sendSuccess(() -> Component.literal("Auto-count encounters: " + state.countEncounters + "."), false);
+        HuntState updated = action.apply(uuid, target.key()).orElse(null);
+        if (updated == null) {
+            source.sendFailure(Component.literal("Could not change " + label + " for that hunt."));
+            return 0;
+        }
+        HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
+        source.sendSuccess(() -> Component.literal(message.apply(updated)), false);
         return 1;
+    }
+
+    /**
+     * Finds the hunt a per-hunt command targets. Matches the exact species/form key, or — when no
+     * form was given and the species has exactly one hunt — that hunt. Reports the failure itself.
+     */
+    private HuntState resolveHunt(CommandSourceStack source, UUID uuid, String species, String form) {
+        String key = HuntState.makeKey(species, form);
+        HuntState exact = huntManager.find(uuid, key).orElse(null);
+        if (exact != null) {
+            return exact;
+        }
+        if (form == null) {
+            String normalizedSpecies = species == null ? "" : species.toLowerCase(java.util.Locale.ROOT).trim();
+            java.util.List<HuntState> ofSpecies = huntManager.getAll(uuid).stream()
+                    .filter(state -> normalizedSpecies.equals(state.species))
+                    .toList();
+            if (ofSpecies.size() == 1) {
+                return ofSpecies.get(0);
+            }
+            if (ofSpecies.size() > 1) {
+                source.sendFailure(Component.literal("Several " + species
+                        + " hunts are active. Add the form, e.g. /shinydex hunt stop " + species + " <form>."));
+                return null;
+            }
+        }
+        source.sendFailure(Component.literal("No active hunt for " + species
+                + (form == null ? "" : " (" + form + ")") + "."));
+        return null;
     }
 
     private ServerPlayer requireHunt(CommandSourceStack source) throws CommandSyntaxException {

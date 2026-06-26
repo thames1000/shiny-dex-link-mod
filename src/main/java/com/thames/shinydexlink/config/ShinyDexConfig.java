@@ -20,6 +20,14 @@ public final class ShinyDexConfig {
     public boolean huntCountEncounters = true;
     /** Default for new hunts: auto-increment when an egg of the target species hatches. */
     public boolean huntCountEggHatches = true;
+    /** How many distinct hunts one player may run at the same time. */
+    public int maxConcurrentHunts = 10;
+    /**
+     * Sync hunt progress with the website: push a player's hunts when they disconnect, and pull
+     * saved progress when a hunt starts so the counter resumes. Requires the player to be linked
+     * (or {@code syncUnlinkedPlayers}).
+     */
+    public boolean syncHuntProgress = true;
 
     public boolean isMockApi() {
         return apiBaseUrl == null || apiBaseUrl.isBlank() || "mock".equalsIgnoreCase(apiBaseUrl.trim());
@@ -39,5 +47,6 @@ public final class ShinyDexConfig {
         requestTimeoutSeconds = Math.max(1, requestTimeoutSeconds);
         linkCooldownSeconds = Math.max(0, linkCooldownSeconds);
         testCooldownSeconds = Math.max(0, testCooldownSeconds);
+        maxConcurrentHunts = Math.max(1, maxConcurrentHunts);
     }
 }

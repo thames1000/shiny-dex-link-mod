@@ -96,28 +96,41 @@ Use `apiBaseUrl: "mock"` while developing. The mod logs redacted JSON payloads i
 - `/shinydex berries` scans your inventory, ender chest, and containers for Cobblemon berries and syncs the set to the website. Vanilla container items (shulker boxes) are scanned too; **Sophisticated Backpacks** contents are read best-effort when that mod is installed (see `BerryScanner` / `SophisticatedBackpacksReader`).
 - `/shinydex test` sends a fake shiny Mareep test event for API connectivity.
 - `/shinydex hunt <species> [form]` starts a shiny hunt for a species (optionally pinned to a
-  form); `/shinydex hunt status|stop|reset` and `/shinydex hunt encounters|eggs` (toggle
-  auto-counting) manage the active hunt.
+  form). You can run several hunts at once (up to `maxConcurrentHunts`, default 10). The per-hunt
+  commands take an optional species/form to pick one hunt and otherwise apply to all:
+  `/shinydex hunt status`, `/shinydex hunt stop [species [form]]`, `/shinydex hunt reset [species
+  [form]]`, and `/shinydex hunt encounters|eggs [species [form]]` (toggle auto-counting).
 
 ## Shiny hunt counter
 
 See **[`docs/hunt-guide.md`](docs/hunt-guide.md)** for the full install + usage guide.
 
-A client overlay (top-left) shows the active hunt target and counter. The counter increments:
+A client overlay lists every active hunt with its target and counter. Each hunt's counter
+increments:
 
 - **Automatically on encounters** — entering a wild battle against the target species.
 - **Automatically on egg hatches** — hatching an egg of the target species. A shiny target hatch
   completes the hunt and is synced as a catch (since hatching fires no Cobblemon capture event).
-- **Manually** — keybinds `+`/`-` (default `=`/`-`), for counting spawns you only see, or fixups.
+- **Manually** — the `+`/`-` buttons on each hunt's row in the hunt screen, for counting spawns you
+  only see, or fixups.
 
-Either auto source can be toggled per hunt. When the target shiny is **caught or hatched**, the
-final count is attached to the catch synced to the website (`huntCount`/`huntKind`/`huntStartedAt`,
-see `docs/backend-api.md`) and the hunt clears.
+Either auto source can be toggled per hunt. When a target shiny is **caught or hatched**, that
+hunt's final count is attached to the catch synced to the website
+(`huntCount`/`huntKind`/`huntStartedAt`, see `docs/backend-api.md`) and the hunt clears.
 
-Default keybinds (rebindable in Options → Controls, category "ShinyDex Link"): `=` +1, `-` −1,
-`H` open hunt screen, plus an unbound "toggle overlay". The hunt screen sets the target with live
-species suggestions and toggles auto-counting. Hunt state is server-authoritative and works in
-single-player.
+**Cross-session resume** (when `syncHuntProgress` is on and you're linked): your hunts are pushed to
+the website when you **disconnect**, and starting a hunt **pulls** any saved progress back so the
+counter resumes where you left off. See `/minecraft/hunts/sync` and `/minecraft/hunts/fetch` in
+`docs/backend-api.md`.
+
+**Overlay placement:** the overlay starts in the top-right (clear of the battle info Cobblemon
+draws top-left). Open the hunt screen → **Edit overlay position** to drag it anywhere; the spot is
+saved per client in `config/shinydex-link-client.json`.
+
+Default keybinds (rebindable in Options → Controls, category "ShinyDex Link"): `H` open hunt screen,
+plus an unbound "toggle overlay". The hunt screen adds hunts (with live species suggestions), and
+each active hunt has its own `+`/`-`, encounter/egg toggles, reset, and stop buttons, plus a
+"Stop all hunts" button. Hunt state is server-authoritative and works in single-player.
 
 ## Apex/Fabric Setup
 

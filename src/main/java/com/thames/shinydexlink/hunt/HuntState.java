@@ -40,6 +40,22 @@ public final class HuntState {
         this.updatedAt = this.startedAt;
     }
 
+    /**
+     * Stable identifier for one hunt within a player's set, built from the species and (optional)
+     * form so a player can run two hunts for the same species in different forms. The client
+     * mirrors this exact value so per-hunt actions (increment, stop, ...) name an unambiguous hunt.
+     */
+    public String key() {
+        return makeKey(species, form);
+    }
+
+    /** Normalized {@code "species|form"} key; {@code form} is left blank for any-form hunts. */
+    public static String makeKey(String species, String form) {
+        String s = species == null ? "" : species.toLowerCase(Locale.ROOT).trim();
+        String f = form == null ? "" : form.toLowerCase(Locale.ROOT).trim();
+        return s + "|" + f;
+    }
+
     /** Total attempts; never negative even after manual decrements. */
     public int total() {
         return Math.max(0, encounters + eggs + manual);

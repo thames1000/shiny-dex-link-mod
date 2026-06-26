@@ -147,6 +147,95 @@ Response:
 }
 ```
 
+## POST `/minecraft/hunts/sync`
+
+Pushes a linked player's **active shiny hunts** so their progress persists server-side and follows
+them across sessions or devices. The mod sends this when a player **disconnects**. The `hunts` list
+is a **full snapshot and authoritative** — the backend should replace whatever it had stored for
+this player with exactly this list, and an **empty list clears** their stored hunts (e.g. they
+stopped or completed everything). Unlinked players are only sent when `syncUnlinkedPlayers` is on.
+
+Request:
+
+```json
+{
+  "serverToken": "secret",
+  "serverId": "cobbleverse-main",
+  "minecraftUuid": "uuid",
+  "minecraftName": "Thamescape",
+  "reportedAt": "2026-06-26T20:15:31Z",
+  "hunts": [
+    {
+      "species": "mareep",
+      "form": null,
+      "displayName": "Mareep",
+      "encounters": 187,
+      "eggs": 0,
+      "manual": 3,
+      "total": 190,
+      "countEncounters": true,
+      "countEggs": true,
+      "startedAt": "2026-06-26T18:02:11Z",
+      "updatedAt": "2026-06-26T20:15:30Z"
+    }
+  ]
+}
+```
+
+`form` is null for an any-form hunt. `total` is `encounters + eggs + manual` (never negative). Store
+the hunts keyed by the player and `species`+`form` so a later fetch can find them.
+
+Response:
+
+```json
+{ "success": true, "message": "OK", "stored": 1 }
+```
+
+## POST `/minecraft/hunts/fetch`
+
+Looks up saved progress for **one** hunt (a player + `species`, optionally a `form`). The mod calls
+this when a **hunt starts**, to resume the counter. If `form` is omitted/null, match the player's
+any-form hunt for that species.
+
+Request:
+
+```json
+{
+  "serverToken": "secret",
+  "serverId": "cobbleverse-main",
+  "minecraftUuid": "uuid",
+  "minecraftName": "Thamescape",
+  "species": "mareep",
+  "form": null
+}
+```
+
+Response when progress exists:
+
+```json
+{
+  "success": true,
+  "found": true,
+  "hunt": {
+    "species": "mareep",
+    "form": null,
+    "displayName": "Mareep",
+    "encounters": 187,
+    "eggs": 0,
+    "manual": 3,
+    "total": 190,
+    "countEncounters": true,
+    "countEggs": true,
+    "startedAt": "2026-06-26T18:02:11Z",
+    "updatedAt": "2026-06-26T20:15:30Z"
+  }
+}
+```
+
+When there is no saved hunt, return `{ "success": true, "found": false, "hunt": null }`. The mod
+only applies the fetched progress if the freshly started hunt hasn't been counted yet, so a missing
+or failed fetch simply leaves the hunt at 0 — it never overwrites local progress.
+
 ## POST `/minecraft/test-event`
 
 Same payload shape as `/minecraft/catches`, but used only for manual connectivity tests.
