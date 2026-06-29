@@ -130,6 +130,7 @@ server-side hunts. You may have several hunts running at once (default cap 10).
 |---|---|
 | `/shinydex hunt <species>` | Start hunting a species (e.g. `/shinydex hunt mareep`). Adds a new hunt, or resets it to 0 if already running. |
 | `/shinydex hunt <species> <form>` | Hunt a specific form (e.g. `/shinydex hunt vulpix alolan`). A separate hunt from the any-form one. |
+| `/shinydex hunt surprise` | Start a hunt for a **random** species (alias: `/shinydex hunt random`), preferring one you aren't already hunting. Not feeling it? `stop` it and roll again. |
 | `/shinydex hunt status` | List every active hunt with its total and encounter/egg/manual breakdown. |
 | `/shinydex hunt reset [species [form]]` | Reset one hunt's counter to 0 (or **all** if no species given). |
 | `/shinydex hunt stop [species [form]]` | End one hunt (or **all** if no species given). |
