@@ -100,6 +100,9 @@ Use `apiBaseUrl: "mock"` while developing. The mod logs redacted JSON payloads i
   commands take an optional species/form to pick one hunt and otherwise apply to all:
   `/shinydex hunt status`, `/shinydex hunt stop [species [form]]`, `/shinydex hunt reset [species
   [form]]`, and `/shinydex hunt encounters|eggs [species [form]]` (toggle auto-counting).
+- `/shinydex hunt surprise` (alias `/shinydex hunt random`) starts a hunt for a random species,
+  preferring one you aren't already hunting. If the rolled target isn't one you fancy, back out
+  with `/shinydex hunt stop <species>` (or `/shinydex hunt stop` to clear them all).
 
 ## Shiny hunt counter
 
