@@ -75,6 +75,8 @@ public final class ShinyDexCommand {
                 .then(literal("hunt")
                         .executes(context -> huntStatus(context.getSource()))
                         .then(literal("status").executes(context -> huntStatus(context.getSource())))
+                        .then(literal("surprise").executes(context -> huntSurprise(context.getSource())))
+                        .then(literal("random").executes(context -> huntSurprise(context.getSource())))
                         .then(literal("stop")
                                 .executes(context -> huntStopAll(context.getSource()))
                                 .then(huntTargetArgs(this::huntStopOne)))
@@ -140,6 +142,69 @@ public final class ShinyDexCommand {
         source.sendSuccess(() -> Component.literal("Now hunting " + label + ". Counter reset to 0. ("
                 + active + "/" + huntManager.maxHunts() + " hunts active)"), false);
         return 1;
+    }
+
+    /**
+     * Starts a hunt for a random Cobblemon species — a "surprise" hunt. The pick avoids species the
+     * player is already hunting when possible. If the player doesn't fancy the chosen target they can
+     * back out with {@code /shinydex hunt stop <species>} (or {@code stop} to clear every hunt).
+     */
+    private int huntSurprise(CommandSourceStack source) throws CommandSyntaxException {
+        ServerPlayer player = requireHunt(source);
+        if (player == null) {
+            return 0;
+        }
+        UUID uuid = player.getUUID();
+        if (huntManager.size(uuid) >= huntManager.maxHunts()) {
+            source.sendFailure(Component.literal("You already have " + huntManager.maxHunts()
+                    + " active hunts (the max). Stop one with /shinydex hunt stop <species> first."));
+            return 0;
+        }
+        String species = pickSurpriseSpecies(uuid);
+        if (species == null) {
+            source.sendFailure(Component.literal("No Cobblemon species are available to pick a surprise hunt from."));
+            return 0;
+        }
+        HuntState state = huntManager.setTarget(
+                uuid, species, SpeciesLookup.displayName(species), null,
+                config.huntCountEncounters, config.huntCountEggHatches);
+        if (state == null) {
+            source.sendFailure(Component.literal("Could not start a surprise hunt right now."));
+            return 0;
+        }
+        HuntNetworking.sendUpdate(player, huntManager.getAll(uuid));
+        // Resume from any progress saved on the website for this species.
+        huntProgressSync.fetchAndSeed(player, state.species, state.form);
+        int active = huntManager.size(uuid);
+        source.sendSuccess(() -> Component.literal("Surprise! Now hunting " + state.displayName + ". ("
+                + active + "/" + huntManager.maxHunts() + " hunts active). Not the one for you? "
+                + "Stop it with /shinydex hunt stop " + state.species + "."), false);
+        return 1;
+    }
+
+    /**
+     * Picks a random species id for a surprise hunt, preferring one the player isn't already hunting.
+     * Returns null only when Cobblemon's species registry is unavailable (e.g. the mod is absent).
+     */
+    private String pickSurpriseSpecies(UUID uuid) {
+        java.util.List<String> ids = SpeciesLookup.allIds();
+        if (ids.isEmpty()) {
+            return null;
+        }
+        Set<String> active = new java.util.HashSet<>();
+        for (HuntState state : huntManager.getAll(uuid)) {
+            active.add(state.species);
+        }
+        java.util.List<String> candidates = new ArrayList<>();
+        for (String id : ids) {
+            if (!active.contains(id)) {
+                candidates.add(id);
+            }
+        }
+        if (candidates.isEmpty()) {
+            candidates = ids;
+        }
+        return candidates.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(candidates.size()));
     }
 
     private int huntStatus(CommandSourceStack source) throws CommandSyntaxException {
