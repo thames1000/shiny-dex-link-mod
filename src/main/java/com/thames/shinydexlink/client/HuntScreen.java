@@ -43,6 +43,10 @@ public final class HuntScreen extends Screen {
     private List<HuntView> shownHunts = List.of();
     private String renderedSignature = "";
 
+    // "Stop all hunts" is a two-click confirm: the first click arms it, the second sends it.
+    private Button stopAllButton;
+    private boolean stopAllArmed;
+
     public HuntScreen() {
         super(Component.literal("ShinyDex Hunts"));
     }
@@ -72,9 +76,10 @@ public final class HuntScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Edit overlay position"),
                 button -> this.minecraft.setScreen(new OverlayEditScreen(this)))
                 .bounds(panelLeft, actionsY, half, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Stop all hunts"),
-                button -> send(HuntActionPayload.of(HuntActionPayload.ACTION_STOP_ALL)))
-                .bounds(panelLeft + half + 4, actionsY, half, 20).build());
+        stopAllArmed = false;
+        stopAllButton = Button.builder(Component.literal("Stop all hunts"), button -> onStopAllPressed())
+                .bounds(panelLeft + half + 4, actionsY, half, 20).build();
+        addRenderableWidget(stopAllButton);
 
         listTop = actionsY + 30;
 
@@ -108,6 +113,21 @@ public final class HuntScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal(text), button -> onPress.run())
                 .bounds(x, y, width, 20).build());
         return x + width + BTN_GAP;
+    }
+
+    /**
+     * Guards the bulk stop behind a second click: the first press relabels the button to ask for
+     * confirmation, the second actually clears every hunt. A server snapshot rebuild re-runs
+     * {@link #init()}, which disarms it again.
+     */
+    private void onStopAllPressed() {
+        if (!stopAllArmed) {
+            stopAllArmed = true;
+            stopAllButton.setMessage(Component.literal("Confirm: stop all?"));
+            return;
+        }
+        stopAllArmed = false;
+        send(HuntActionPayload.of(HuntActionPayload.ACTION_STOP_ALL));
     }
 
     private void startHunt() {

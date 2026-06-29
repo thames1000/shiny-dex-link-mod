@@ -133,7 +133,7 @@ server-side hunts. You may have several hunts running at once (default cap 10).
 | `/shinydex hunt surprise` | Start a hunt for a **random** species (alias: `/shinydex hunt random`), preferring one you aren't already hunting. Not feeling it? `stop` it and roll again. |
 | `/shinydex hunt status` | List every active hunt with its total and encounter/egg/manual breakdown. |
 | `/shinydex hunt reset [species [form]]` | Reset one hunt's counter to 0 (or **all** if no species given). |
-| `/shinydex hunt stop [species [form]]` | End one hunt (or **all** if no species given). |
+| `/shinydex hunt stop [species [form]]` | End one hunt (or **all** if no species given). Stopping **all** when 2+ hunts are active asks first — run `/shinydex hunt stop confirm` within 15s to go through. |
 | `/shinydex hunt encounters [species [form]]` | Toggle auto-counting battles for one hunt (or all). |
 | `/shinydex hunt eggs [species [form]]` | Toggle auto-counting egg hatches for one hunt (or all). |
 
@@ -150,7 +150,8 @@ server-side hunts. You may have several hunts running at once (default cap 10).
 - Each active hunt gets its **own row** with: `-` / `+` (manual count), **Enc:On/Off** and
   **Egg:On/Off** (toggle auto-counting), **Reset**, and **Stop**.
 - **Edit overlay position** — opens the drag editor (see below).
-- **Stop all hunts** — clears every hunt at once.
+- **Stop all hunts** — clears every hunt at once. The button asks to confirm: the first click
+  relabels it to **Confirm: stop all?**, and a second click actually clears them.
 
 ### Overlay placement
 

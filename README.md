@@ -99,7 +99,9 @@ Use `apiBaseUrl: "mock"` while developing. The mod logs redacted JSON payloads i
   form). You can run several hunts at once (up to `maxConcurrentHunts`, default 10). The per-hunt
   commands take an optional species/form to pick one hunt and otherwise apply to all:
   `/shinydex hunt status`, `/shinydex hunt stop [species [form]]`, `/shinydex hunt reset [species
-  [form]]`, and `/shinydex hunt encounters|eggs [species [form]]` (toggle auto-counting).
+  [form]]`, and `/shinydex hunt encounters|eggs [species [form]]` (toggle auto-counting). Stopping
+  **all** hunts (when 2+ are active) asks for confirmation — run `/shinydex hunt stop confirm`
+  within 15s to proceed.
 - `/shinydex hunt surprise` (alias `/shinydex hunt random`) starts a hunt for a random species,
   preferring one you aren't already hunting. If the rolled target isn't one you fancy, back out
   with `/shinydex hunt stop <species>` (or `/shinydex hunt stop` to clear them all).
@@ -133,7 +135,7 @@ saved per client in `config/shinydex-link-client.json`.
 Default keybinds (rebindable in Options → Controls, category "ShinyDex Link"): `H` open hunt screen,
 plus an unbound "toggle overlay". The hunt screen adds hunts (with live species suggestions), and
 each active hunt has its own `+`/`-`, encounter/egg toggles, reset, and stop buttons, plus a
-"Stop all hunts" button. Hunt state is server-authoritative and works in single-player.
+"Stop all hunts" button (two-click confirm). Hunt state is server-authoritative and works in single-player.
 
 ## Apex/Fabric Setup
 

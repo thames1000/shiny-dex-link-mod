@@ -24,11 +24,15 @@ import com.thames.shinydexlink.sync.HuntProgressSync;
 import com.thames.shinydexlink.util.CooldownManager;
 import com.thames.shinydexlink.util.TimeUtil;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -43,6 +47,11 @@ public final class ShinyDexCommand {
     private final HuntProgressSync huntProgressSync;
     private final Logger logger;
     private final CooldownManager cooldowns = new CooldownManager();
+
+    /** How long a player has to confirm a "stop all hunts" request before it lapses. */
+    private static final long STOP_ALL_CONFIRM_WINDOW_SECONDS = 15;
+    /** Players who asked to stop all their hunts, and when — pending an explicit confirm. */
+    private final Map<UUID, Instant> pendingStopAll = new ConcurrentHashMap<>();
 
     public ShinyDexCommand(
             ShinyDexConfig config,
@@ -79,6 +88,7 @@ public final class ShinyDexCommand {
                         .then(literal("random").executes(context -> huntSurprise(context.getSource())))
                         .then(literal("stop")
                                 .executes(context -> huntStopAll(context.getSource()))
+                                .then(literal("confirm").executes(context -> huntStopAllConfirm(context.getSource())))
                                 .then(huntTargetArgs(this::huntStopOne)))
                         .then(literal("reset")
                                 .executes(context -> huntResetAll(context.getSource()))
@@ -228,11 +238,51 @@ public final class ShinyDexCommand {
         return 1;
     }
 
+    /**
+     * Handles {@code /shinydex hunt stop} with no species. Stopping every hunt loses all their
+     * counters, so when two or more are active this only arms a confirmation; the player must run
+     * {@code /shinydex hunt stop confirm} within {@link #STOP_ALL_CONFIRM_WINDOW_SECONDS} to go
+     * through. With zero or one hunt there's nothing to bulk-lose, so it acts immediately.
+     */
     private int huntStopAll(CommandSourceStack source) throws CommandSyntaxException {
         ServerPlayer player = requireHunt(source);
         if (player == null) {
             return 0;
         }
+        UUID uuid = player.getUUID();
+        int active = huntManager.size(uuid);
+        if (active == 0) {
+            pendingStopAll.remove(uuid);
+            source.sendSuccess(() -> Component.literal("No active hunts to stop."), false);
+            return 1;
+        }
+        if (active == 1) {
+            return finishStopAll(source, player);
+        }
+        pendingStopAll.put(uuid, Instant.now());
+        source.sendSuccess(() -> Component.literal("This will stop all " + active
+                + " of your hunts and clear their counters. Run /shinydex hunt stop confirm within "
+                + STOP_ALL_CONFIRM_WINDOW_SECONDS + "s to proceed, or stop just one with "
+                + "/shinydex hunt stop <species>."), false);
+        return 1;
+    }
+
+    private int huntStopAllConfirm(CommandSourceStack source) throws CommandSyntaxException {
+        ServerPlayer player = requireHunt(source);
+        if (player == null) {
+            return 0;
+        }
+        Instant requested = pendingStopAll.remove(player.getUUID());
+        if (requested == null
+                || Duration.between(requested, Instant.now()).toSeconds() >= STOP_ALL_CONFIRM_WINDOW_SECONDS) {
+            source.sendFailure(Component.literal(
+                    "No pending stop-all to confirm (it may have expired). Run /shinydex hunt stop again."));
+            return 0;
+        }
+        return finishStopAll(source, player);
+    }
+
+    private int finishStopAll(CommandSourceStack source, ServerPlayer player) {
         int removed = huntManager.stopAll(player.getUUID());
         HuntNetworking.sendUpdate(player, huntManager.getAll(player.getUUID()));
         if (removed == 0) {
