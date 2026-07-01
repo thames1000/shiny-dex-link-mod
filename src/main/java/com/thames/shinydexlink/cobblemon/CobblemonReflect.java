@@ -124,6 +124,55 @@ public final class CobblemonReflect {
         return namespace >= 0 ? normalized.substring(namespace + 1) : normalized;
     }
 
+    /**
+     * Counts shiny Pokémon of {@code speciesId} across the player's party and PC.
+     *
+     * <p>Verified against Cobblemon 1.7.3: {@code Cobblemon.INSTANCE.getStorage()} yields a
+     * {@code PokemonStoreManager}, whose {@code getParty(ServerPlayer)} / {@code getPC(ServerPlayer)}
+     * return stores that are {@code Iterable<Pokemon>}. Called on the server thread from the
+     * evolution hook so the stores are safe to read. Returns 0 if Cobblemon or the storage API is
+     * unavailable, which the caller treats as "no duplicate found".
+     */
+    public static int countShiny(net.minecraft.server.level.ServerPlayer player, String speciesId) {
+        if (player == null || speciesId == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Object store : playerStores(player)) {
+            if (!(store instanceof Iterable<?> iterable)) {
+                continue;
+            }
+            for (Object pokemon : iterable) {
+                if (pokemon != null && booleanProperty(pokemon, "shiny", false)
+                        && speciesId.equals(speciesId(pokemon))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static List<Object> playerStores(net.minecraft.server.level.ServerPlayer player) {
+        List<Object> stores = new ArrayList<>();
+        try {
+            Class<?> cobblemonClass = Class.forName("com.cobblemon.mod.common.Cobblemon");
+            Object instance = cobblemonClass.getField("INSTANCE").get(null);
+            Object storage = invokeOrNull(instance, "getStorage");
+            Class<?>[] playerArg = {net.minecraft.server.level.ServerPlayer.class};
+            Object party = invokeOrNull(storage, "getParty", playerArg, player);
+            Object pc = invokeOrNull(storage, "getPC", playerArg, player);
+            if (party != null) {
+                stores.add(party);
+            }
+            if (pc != null) {
+                stores.add(pc);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // Cobblemon missing or storage API changed; caller falls back to "no duplicate".
+        }
+        return stores;
+    }
+
     public static Object property(Object target, String name) {
         Object value = propertyOrNull(target, name);
         if (value == null) {

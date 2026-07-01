@@ -2,6 +2,7 @@ package com.thames.shinydexlink;
 
 import com.thames.shinydexlink.api.ShinyDexApiClient;
 import com.thames.shinydexlink.cobblemon.CobblemonCaptureListener;
+import com.thames.shinydexlink.cobblemon.CobblemonEvolutionListener;
 import com.thames.shinydexlink.cobblemon.CobblemonHuntListener;
 import com.thames.shinydexlink.command.ShinyDexCommand;
 import com.thames.shinydexlink.config.ConfigManager;
@@ -60,6 +61,7 @@ public final class ShinyDexLinkMod implements ModInitializer {
 
         new CobblemonCaptureListener(config, linkedPlayerStore, huntManager, syncService, LOGGER).register();
         new CobblemonHuntListener(config, linkedPlayerStore, huntManager, syncService, LOGGER).register();
+        new CobblemonEvolutionListener(config, linkedPlayerStore, syncService, LOGGER).register();
 
         // Push a player's hunt progress to the website when they leave so it persists across sessions.
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> huntProgressSync.pushOnDisconnect(handler.player));

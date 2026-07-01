@@ -54,13 +54,20 @@ src/main/java/com/thames/shinydexlink/
 
 ## Cobblemon API Verification
 
-The capture hook was verified from the Cobblemon `1.7.3` source:
+The capture and evolution hooks were verified from the Cobblemon `1.7.3` source:
 
 - `com.cobblemon.mod.common.api.events.CobblemonEvents.POKEMON_CAPTURED`
 - `com.cobblemon.mod.common.api.events.pokemon.PokemonCapturedEvent`
 - Event properties: `pokemon`, `player`, `pokeBallEntity`
+- `com.cobblemon.mod.common.api.events.CobblemonEvents.EVOLUTION_COMPLETE`
+- `com.cobblemon.mod.common.api.events.pokemon.evolution.EvolutionCompleteEvent`
+- Event property `pokemon` (the evolved result), plus `Pokemon.getOwnerPlayer()` for the owner
 
-`CobblemonCaptureListener` uses reflection so this project stays buildable without bundling Cobblemon as a compile-time dependency. If Cobblemon is missing or the API shape changes, linking and test commands still work and capture sync logs a clear warning.
+`CobblemonCaptureListener` and `CobblemonEvolutionListener` use reflection so this project stays buildable without bundling Cobblemon as a compile-time dependency. If Cobblemon is missing or the API shape changes, linking and test commands still work and sync logs a clear warning.
+
+**Evolution sync:** evolving fires no capture event, so an evolved shiny (e.g. shiny Ralts → Kirlia) would otherwise never reach the dex. `CobblemonEvolutionListener` hooks `EVOLUTION_COMPLETE` and submits the evolved form as an ordinary catch — the backend records the new species as caught, and shiny-caught when the mon is shiny — exactly as a real capture would. Evolutions don't touch hunt counters. Disable with `syncEvolutions: false`.
+
+**Evolved-away shiny pruning:** shininess carries through evolution, so evolving a shiny consumes the pre-evolution shiny. After a shiny evolution the listener scans the player's party and PC (via Cobblemon's storage API) for another shiny of the pre-evolution species; if none remains, it calls `POST /minecraft/catches/remove` so the dex clears that species' shiny-caught state and tracks *currently-owned* shinies rather than ever-owned ones. Normal-caught state is left intact. This is best-effort (not retried on failure). Disable with `pruneEvolvedShinies: false`.
 
 Each capture also forwards the Pokémon's Cobblemon **aspects** (e.g. `alolan`, `region-bias-alola`) in the catch payload. The website matches these against its **Variants** tab so regional/cosmetic forms are tracked in addition to the national dex — see `docs/backend-api.md` and `docs/site-export.md`.
 
@@ -79,6 +86,8 @@ Generated at `config/shinydex-link.json`:
   "retryIntervalSeconds": 60,
   "logSuccessfulSyncs": true,
   "announceShinySyncToPlayer": true,
+  "syncEvolutions": true,
+  "pruneEvolvedShinies": true,
   "requestTimeoutSeconds": 10,
   "linkCooldownSeconds": 15,
   "testCooldownSeconds": 30

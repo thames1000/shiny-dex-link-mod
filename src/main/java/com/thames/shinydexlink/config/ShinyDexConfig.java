@@ -10,6 +10,17 @@ public final class ShinyDexConfig {
     public int retryIntervalSeconds = 60;
     public boolean logSuccessfulSyncs = true;
     public boolean announceShinySyncToPlayer = true;
+    /**
+     * Sync a Pokémon's evolved form as a catch. Evolving fires no Cobblemon capture event, so
+     * without this the evolved species (and its shiny state) never reaches the dex.
+     */
+    public boolean syncEvolutions = true;
+    /**
+     * When a shiny evolves and no other shiny of the pre-evolution species remains in the player's
+     * party or PC, ask the website to clear that species' shiny-caught state, so the dex tracks
+     * currently-owned shinies rather than ever-owned ones. Requires {@link #syncEvolutions}.
+     */
+    public boolean pruneEvolvedShinies = true;
     public int requestTimeoutSeconds = 10;
     public int linkCooldownSeconds = 15;
     public int testCooldownSeconds = 30;

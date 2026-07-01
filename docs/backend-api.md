@@ -114,6 +114,46 @@ Response:
 Variants only have caught/shiny states (no seen, no boxed). The backend should
 treat `eventId` as idempotent and ignore duplicates.
 
+## POST `/minecraft/catches/remove`
+
+Clears a species' **shiny-caught** state after the player evolved their last shiny
+of it away. When a shiny evolves (e.g. shiny Ralts → Kirlia), the mod syncs the
+evolved form via `/minecraft/catches` and then scans the player's party and PC; if
+no other shiny of the pre-evolution species remains, it sends this so the dex
+reflects currently-owned shinies rather than ever-owned ones. Sent only for linked
+players (or when `syncUnlinkedPlayers` is on) and gated by `pruneEvolvedShinies`.
+
+Request:
+
+```json
+{
+  "serverToken": "secret",
+  "serverId": "cobbleverse-main",
+  "minecraftUuid": "uuid",
+  "minecraftName": "Thamescape",
+  "species": "ralts",
+  "form": "normal",
+  "aspects": ["alolan"],
+  "reason": "evolved",
+  "removedAt": "2026-06-24T20:15:31Z"
+}
+```
+
+The backend should clear the species' `shinyCaught` state (and, when `aspects`/`form`
+resolve to a variant, that variant's `variantShinyCaught`). The **normal**-caught state
+is left untouched — the player still owns the line, just not a shiny of this stage.
+`reason` is advisory for auditing. This is best-effort and **not** retried by the mod,
+so treat it as idempotent (removing an already-cleared shiny is a no-op success).
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "Shiny removed"
+}
+```
+
 ## POST `/minecraft/berries`
 
 Reports the berries a linked player holds (from `/shinydex berries`). Berries are

@@ -3,6 +3,7 @@ package com.thames.shinydexlink.sync;
 import com.thames.shinydexlink.api.ShinyDexApiClient;
 import com.thames.shinydexlink.api.dto.ApiResponse;
 import com.thames.shinydexlink.api.dto.CatchEventRequest;
+import com.thames.shinydexlink.api.dto.ShinyRemovalRequest;
 import com.thames.shinydexlink.config.ShinyDexConfig;
 import com.thames.shinydexlink.data.EventQueue;
 import com.thames.shinydexlink.data.LinkedPlayerStore;
@@ -88,6 +89,37 @@ public final class SyncService {
             markSynced(uuid, event.eventId);
             if (config.announceShinySyncToPlayer && event.shiny) {
                 sendOnServerThread(player, "ShinyDex synced your shiny " + event.displayName + ".");
+            }
+        });
+    }
+
+    /**
+     * Clears a species' shiny-caught state on the website after its last shiny evolved away. This
+     * is best-effort: unlike catches it is not queued for retry, since a stale removal is far less
+     * important than a missed catch and re-deriving it later would need another PC scan. A failure
+     * only logs.
+     */
+    public void submitShinyRemoval(ShinyRemovalRequest request, ServerPlayer player) {
+        if (!config.enabled) {
+            return;
+        }
+
+        UUID uuid = player.getUUID();
+        if (!linkedPlayerStore.isLinked(uuid) && !config.syncUnlinkedPlayers) {
+            return;
+        }
+
+        apiClient.removeShiny(request).whenComplete((response, throwable) -> {
+            if (throwable != null || response == null || !response.accepted()) {
+                String error = throwable != null
+                        ? throwable.getMessage()
+                        : response == null ? "Empty ShinyDex response" : response.message;
+                logger.warn("ShinyDex could not remove evolved-away shiny {}: {}",
+                        request.species, error == null ? "Unknown ShinyDex failure" : error);
+                return;
+            }
+            if (config.logSuccessfulSyncs) {
+                logger.info("ShinyDex removed evolved-away shiny {}", request.species);
             }
         });
     }
