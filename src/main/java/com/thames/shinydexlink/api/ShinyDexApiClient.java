@@ -12,6 +12,7 @@ import com.thames.shinydexlink.api.dto.HuntSyncRequest;
 import com.thames.shinydexlink.api.dto.HuntSyncResponse;
 import com.thames.shinydexlink.api.dto.LinkRequest;
 import com.thames.shinydexlink.api.dto.LinkResponse;
+import com.thames.shinydexlink.api.dto.ShinyRemovalRequest;
 import com.thames.shinydexlink.api.dto.UnlinkRequest;
 import com.thames.shinydexlink.config.ShinyDexConfig;
 import com.thames.shinydexlink.util.JsonUtil;
@@ -52,6 +53,13 @@ public final class ShinyDexApiClient {
     public CompletableFuture<ApiResponse> sendCatch(CatchEventRequest request) {
         JsonObject payload = catchPayload(request);
         return post(ApiEndpoints.CATCHES, payload, ApiResponse.class, ApiResponse.success());
+    }
+
+    /** Clears a species/variant's shiny-caught state after its last shiny was evolved away. */
+    public CompletableFuture<ApiResponse> removeShiny(ShinyRemovalRequest request) {
+        JsonObject payload = JsonUtil.toObject(request);
+        payload.addProperty("serverToken", config.serverToken);
+        return post(ApiEndpoints.CATCHES_REMOVE, payload, ApiResponse.class, ApiResponse.success());
     }
 
     public CompletableFuture<ApiResponse> sendTestEvent(CatchEventRequest request) {
